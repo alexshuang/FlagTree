@@ -63,12 +63,6 @@ void init_triton_amd_passes_ttgpuir(py::module &&m) {
   ADD_PASS_WRAPPER_2("add_optimize_lds_usage",
                      mlir::triton::HCU::createOptimizeLDSUsagePass,
                      const std::string &, int32_t);
-  ADD_PASS_WRAPPER_0("add_hcu_accelerate_flash_attention",
-                     mlir::createTritonHCUAccelerateFlashAttentionPass);
-  ADD_PASS_WRAPPER_0("add_global_copy_local_swizzle",
-                     mlir::createTritonHCUGlobalToLocalSwizzlePass);
-  ADD_PASS_WRAPPER_0("add_move_load_tofront_dot",
-                     mlir::createTritonHCUMoveLoadToFrontOfDOTPass);
   ADD_PASS_WRAPPER_0("add_allocate_shared_memory",
                      mlir::triton::createAllocateHCUGPUSharedMemory);
   ADD_PASS_OPTION_WRAPPER_4("add_accelerate_matmul",

@@ -21,7 +21,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #include "../PatternTritonGPUOpToLLVM.h"
-#include "TritonAMDGPUTransforms/MfmaGroup.h"
+#include "TritonHCUGPUTransforms/MfmaGroup.h"
 #include "Utility.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
@@ -32,9 +32,9 @@ using namespace mlir::triton;
 
 namespace {
 
-using ::mlir::LLVM::AMD::scaleDotElemTypeToMLIRType;
-using ::mlir::LLVM::AMD::shuffleXor;
-using ::mlir::triton::gpu::AMDMfmaEncodingAttr;
+using ::mlir::LLVM::HCU::scaleDotElemTypeToMLIRType;
+using ::mlir::LLVM::HCU::shuffleXor;
+using ::mlir::triton::gpu::HCUMfmaEncodingAttr;
 using ::mlir::triton::gpu::DotOperandEncodingAttr;
 using ::mlir::triton::gpu::LinearEncodingAttr;
 using ::mlir::triton::gpu::MmacLayout;
@@ -61,7 +61,7 @@ static inline int32_t getMfmaF8F6F4MatrixFormat(Type t) {
 }
 
 struct DotOpMFMAConversionHelper {
-  AMDMfmaEncodingAttr mfmaLayout;
+  HCUMfmaEncodingAttr mfmaLayout;
 
   ConversionPatternRewriter &rewriter;
   const LLVMTypeConverter *typeConverter;
@@ -70,7 +70,7 @@ struct DotOpMFMAConversionHelper {
 
   virtual ~DotOpMFMAConversionHelper() = default;
 
-  explicit DotOpMFMAConversionHelper(AMDMfmaEncodingAttr mfmaLayout,
+  explicit DotOpMFMAConversionHelper(HCUMfmaEncodingAttr mfmaLayout,
                                      ConversionPatternRewriter &rewriter,
                                      const LLVMTypeConverter *typeConverter,
                                      Location loc)
@@ -551,7 +551,7 @@ struct DotOpMFMAConversionHelper {
 struct ScaledDotOpMFMAConversionHelper : DotOpMFMAConversionHelper {
   virtual ~ScaledDotOpMFMAConversionHelper() = default;
 
-  ScaledDotOpMFMAConversionHelper(AMDMfmaEncodingAttr mfmaLayout,
+  ScaledDotOpMFMAConversionHelper(HCUMfmaEncodingAttr mfmaLayout,
                                   ConversionPatternRewriter &rewriter,
                                   const LLVMTypeConverter *typeConverter,
                                   Location loc)
@@ -850,7 +850,7 @@ struct ScaledDotOpMFMAConversionHelper : DotOpMFMAConversionHelper {
 
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 LogicalResult convertMFMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
                           const LLVMTypeConverter *typeConverter,
                           ConversionPatternRewriter &rewriter) {
@@ -864,7 +864,7 @@ LogicalResult convertMFMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
 
   auto cTensorTy = rankedTType(op.getC());
   auto dTensorTy = rankedTType(op.getD());
-  assert(isa<AMDMfmaEncodingAttr>(cTensorTy.getEncoding()) &&
+  assert(isa<HCUMfmaEncodingAttr>(cTensorTy.getEncoding()) &&
          "Currently, we only support C with a mfma layout.");
 
   assert(cTensorTy.getShape()[0] == dTensorTy.getShape()[0] &&
@@ -872,7 +872,7 @@ LogicalResult convertMFMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
          "DotOp's C operand should pass the same number of values as D.");
 
   auto loc = op.getLoc();
-  auto mfmaLayout = cast<AMDMfmaEncodingAttr>(
+  auto mfmaLayout = cast<HCUMfmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
 
   DotOpMFMAConversionHelper helper(mfmaLayout, rewriter, typeConverter, loc);
@@ -919,7 +919,7 @@ LogicalResult convertScaledMFMA(triton::DotScaledOp op,
 
   auto cTensorTy = op.getC().getType();
   auto dTensorTy = op.getD().getType();
-  assert(isa<AMDMfmaEncodingAttr>(cTensorTy.getEncoding()) &&
+  assert(isa<HCUMfmaEncodingAttr>(cTensorTy.getEncoding()) &&
          "Currently, we only support C with a mfma layout.");
 
   assert(cTensorTy.getShape()[0] == dTensorTy.getShape()[0] &&
@@ -927,7 +927,7 @@ LogicalResult convertScaledMFMA(triton::DotScaledOp op,
          "DotOp's C operand should pass the same number of values as D.");
 
   auto loc = op.getLoc();
-  auto mfmaLayout = cast<AMDMfmaEncodingAttr>(
+  auto mfmaLayout = cast<HCUMfmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
 
   ScaledDotOpMFMAConversionHelper helper(mfmaLayout, rewriter, typeConverter,
@@ -935,4 +935,4 @@ LogicalResult convertScaledMFMA(triton::DotScaledOp op,
 
   return helper.convertScaledDot(op, adaptor);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

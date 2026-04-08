@@ -1,20 +1,20 @@
 #include "AsyncUtility.h"
 
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "TargetInfo.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "llvm/ADT/TypeSwitch.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 namespace {
 constexpr const char *syncedViaAsyncWaitAttrName =
-    "ttg.amdg.syncedViaAsyncWait";
+    "ttg.hcug.syncedViaAsyncWait";
 // Traverses the def-chain including control flow of the token and returns true
 // if all defining operations are an AsyncWait
 bool comesFromAsyncWait(Value token) {
   if (auto defOp = token.getDefiningOp()) {
-    return isa<triton::gpu::AsyncWaitOp, amdgpu::AsyncWaitOp>(defOp);
+    return isa<triton::gpu::AsyncWaitOp, hcugpu::AsyncWaitOp>(defOp);
   }
 
   auto blockArg = dyn_cast<BlockArgument>(token);
@@ -54,8 +54,8 @@ bool comesFromAsyncWait(Value token) {
 void addLocalBarrierAfterAmdGpuAsyncWait(ModuleOp mod) {
   auto *ctx = mod->getContext();
 
-  SmallVector<amdgpu::AsyncWaitOp> waits;
-  mod->walk([&waits](amdgpu::AsyncWaitOp waitOp) { waits.push_back(waitOp); });
+  SmallVector<hcugpu::AsyncWaitOp> waits;
+  mod->walk([&waits](hcugpu::AsyncWaitOp waitOp) { waits.push_back(waitOp); });
 
   IRRewriter builder(mod.getContext());
   for (auto waitOp : waits) {
@@ -73,7 +73,7 @@ void annotateLocalLoadsSyncedViaAsyncWait(ModuleOp mod) {
   mod->walk([&](Operation *op) {
     TypeSwitch<Operation *, void>(op)
         .Case<triton::gpu::LocalLoadOp,
-              triton::amdgpu::LocalLoadPackedTransposedOp>([&](auto loadOp) {
+              triton::hcugpu::LocalLoadPackedTransposedOp>([&](auto loadOp) {
           if (loadOp->hasAttr(syncedViaAsyncWaitAttrName))
             return;
           Value token = loadOp.getToken();
@@ -101,7 +101,7 @@ namespace {
 LLVM::AliasScopeDomainAttr getLoadScopeDomain(MLIRContext *ctx) {
   Builder b(ctx);
   return b.getAttr<LLVM::AliasScopeDomainAttr>(
-      b.getStringAttr("amdg.AsyncOps"),
+      b.getStringAttr("hcug.AsyncOps"),
       b.getStringAttr(
           "Domain to hold alias scopes to specify aliasing information between "
           "AsyncCopyGlobalToLocal, BufferLoadToLocal and LocalLoad ops"));
@@ -109,7 +109,7 @@ LLVM::AliasScopeDomainAttr getLoadScopeDomain(MLIRContext *ctx) {
 
 LLVM::AliasScopeAttr getAsyncCopyScope(MLIRContext *ctx) {
   Builder b(ctx);
-  auto name = b.getStringAttr("amdg.AsyncCopies");
+  auto name = b.getStringAttr("hcug.AsyncCopies");
   auto desc = b.getStringAttr(
       "Scope containing all AsyncCopyGlobalToLocal and BufferLoadToLocal ops");
   return b.getAttr<LLVM::AliasScopeAttr>(name, getLoadScopeDomain(ctx), desc);
@@ -117,7 +117,7 @@ LLVM::AliasScopeAttr getAsyncCopyScope(MLIRContext *ctx) {
 
 LLVM::AliasScopeAttr getLoadCopyScope(MLIRContext *ctx) {
   Builder b(ctx);
-  auto name = b.getStringAttr("amdg.LocalLoads");
+  auto name = b.getStringAttr("hcug.LocalLoads");
   auto desc = b.getStringAttr("Scope containing all LocalLoad ops");
   return b.getAttr<LLVM::AliasScopeAttr>(name, getLoadScopeDomain(ctx), desc);
 }
@@ -153,7 +153,7 @@ void addLocalLoadNoAliasScope(LLVM::AliasAnalysisOpInterface llLoadOp) {
 
 unsigned
 fitToValidDirectToLdsVecSize(unsigned maxVecSize, unsigned elemBitwidth,
-                             const triton::AMD::TargetInfo &targetInfo) {
+                             const triton::HCU::TargetInfo &targetInfo) {
   while (maxVecSize > 0 && !targetInfo.supportsDirectToLdsLoadBitWidth(
                                maxVecSize * elemBitwidth)) {
     maxVecSize /= 2;
@@ -161,4 +161,4 @@ fitToValidDirectToLdsVecSize(unsigned maxVecSize, unsigned elemBitwidth,
   return maxVecSize;
 }
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

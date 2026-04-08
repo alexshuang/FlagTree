@@ -1,4 +1,4 @@
-add_triton_library(TritonAMDGPUToLLVM
+add_triton_library(TritonHCUGPUToLLVM
     AsyncUtility.cpp
     AtomicRMWOpsEmitter.cpp
     AllocateSharedMemory.cpp
@@ -36,12 +36,12 @@ add_triton_library(TritonAMDGPUToLLVM
     ConvertWarpSpecializeToLLVM.cpp
 
     DEPENDS
-    TritonAMDGPUConversionPassIncGen
+    TritonHCUGPUConversionPassIncGen
     LLVMIRIncGen
 
     LINK_LIBS PUBLIC
     TritonGPUToLLVM
-    TritonAMDGPUIR
+    TritonHCUGPUIR
     LLVMCore
     LLVMPasses
     LLVMSupport

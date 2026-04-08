@@ -11,17 +11,17 @@
 using namespace mlir;
 using namespace mlir::triton;
 using namespace mlir::triton::gpu;
-using ::mlir::LLVM::AMD::upcast8xMxfp4_SW;
+using ::mlir::LLVM::HCU::upcast8xMxfp4_SW;
 
 namespace {
 
 class Fp4ToFpOpPattern : public ConvertOpToLLVMPattern<Fp4ToFpOp> {
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 
 public:
   Fp4ToFpOpPattern(LLVMTypeConverter &typeConverter,
-                   const AMD::TargetInfo &targetInfo, PatternBenefit benefit)
+                   const HCU::TargetInfo &targetInfo, PatternBenefit benefit)
       : ConvertOpToLLVMPattern<Fp4ToFpOp>(typeConverter, benefit),
         targetInfo(targetInfo) {}
 
@@ -60,7 +60,7 @@ public:
 };
 } // anonymous namespace
 
-void mlir::triton::AMD::populateFp4ToFpToLLVMPatterns(
+void mlir::triton::HCU::populateFp4ToFpToLLVMPatterns(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     const TargetInfo &targetInfo, PatternBenefit benefit) {
   patterns.add<Fp4ToFpOpPattern>(typeConverter, targetInfo, benefit);

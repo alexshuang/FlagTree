@@ -4,10 +4,10 @@
 
 using namespace mlir;
 
-using ::mlir::triton::gpu::AMDWmmaEncodingAttr;
+using ::mlir::triton::gpu::HCUWmmaEncodingAttr;
 using ::mlir::triton::gpu::getShapePerCTA;
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 LogicalResult convertAMDFMADot(triton::DotOp op, triton::DotOp::Adaptor adaptor,
                                const LLVMTypeConverter *typeConverter,
                                ConversionPatternRewriter &rewriter);
@@ -29,7 +29,7 @@ LogicalResult convertScaledWMMA(triton::DotScaledOp op,
                                 triton::DotScaledOp::Adaptor adaptor,
                                 const LLVMTypeConverter *typeConverter,
                                 ConversionPatternRewriter &rewriter);
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU
 
 namespace {
 struct DotOpConversion : public ConvertOpToLLVMPattern<triton::DotOp> {
@@ -43,16 +43,16 @@ struct DotOpConversion : public ConvertOpToLLVMPattern<triton::DotOp> {
     Value D = op.getResult();
 
     auto dEncoding = cast<RankedTensorType>(D.getType()).getEncoding();
-    if (isa<AMDMfmaEncodingAttr>(dEncoding)) {
-      return AMD::convertMFMA(op, adaptor, getTypeConverter(), rewriter);
+    if (isa<HCUMfmaEncodingAttr>(dEncoding)) {
+      return HCU::convertMFMA(op, adaptor, getTypeConverter(), rewriter);
     }
-    if (isa<AMDWmmaEncodingAttr>(dEncoding)) {
-      return AMD::convertWMMA(op, adaptor, getTypeConverter(), rewriter);
+    if (isa<HCUWmmaEncodingAttr>(dEncoding)) {
+      return HCU::convertWMMA(op, adaptor, getTypeConverter(), rewriter);
     }
 
     if (isa<BlockedEncodingAttr>(
             cast<RankedTensorType>(D.getType()).getEncoding()))
-      return AMD::convertAMDFMADot(op, adaptor, getTypeConverter(), rewriter);
+      return HCU::convertAMDFMADot(op, adaptor, getTypeConverter(), rewriter);
 
     llvm::report_fatal_error(
         "Unsupported DotOp found when converting TritonGPU to LLVM.");
@@ -70,11 +70,11 @@ struct ScaledDotOpConversion
 
     auto dEncoding = cast<RankedTensorType>(D.getType()).getEncoding();
 
-    if (isa<AMDMfmaEncodingAttr>(dEncoding)) {
-      return AMD::convertScaledMFMA(op, adaptor, getTypeConverter(), rewriter);
+    if (isa<HCUMfmaEncodingAttr>(dEncoding)) {
+      return HCU::convertScaledMFMA(op, adaptor, getTypeConverter(), rewriter);
     }
-    if (isa<AMDWmmaEncodingAttr>(dEncoding)) {
-      return AMD::convertScaledWMMA(op, adaptor, getTypeConverter(), rewriter);
+    if (isa<HCUWmmaEncodingAttr>(dEncoding)) {
+      return HCU::convertScaledWMMA(op, adaptor, getTypeConverter(), rewriter);
     }
 
     llvm::report_fatal_error(
@@ -83,7 +83,7 @@ struct ScaledDotOpConversion
 };
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 void populateDotOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                  RewritePatternSet &patterns,
                                  ModuleAxisInfoAnalysis &axisInfoAnalysis,
@@ -91,4 +91,4 @@ void populateDotOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
   patterns.add<DotOpConversion>(typeConverter, benefit);
   patterns.add<ScaledDotOpConversion>(typeConverter, benefit);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

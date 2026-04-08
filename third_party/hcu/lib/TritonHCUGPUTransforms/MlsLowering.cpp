@@ -12,13 +12,13 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "Utility.h"
 
 using namespace mlir;
 namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
-namespace tta = mlir::triton::amdgpu;
+namespace tta = mlir::triton::hcugpu;
 
 
 namespace {
@@ -55,7 +55,7 @@ public:
     rewriter.setInsertionPoint(matrixOp);
     auto sharedMemorySpace = ttg::SharedMemorySpaceAttr::get(matrixTy.getContext());
     auto ctaLayout = ttg::getCTALayout(matrixTy.getEncoding());
-    auto mlsSharedEncoding = ttg::AMDMlsSharedEncodingAttr::get(
+    auto mlsSharedEncoding = ttg::HCUMlsSharedEncodingAttr::get(
                                   matrixOp.getContext(), mlsAttr.getOpIdx(), mlsAttr.getMlsTile(),
                                   mlsAttr.getElemBitWidth(), mlsAttr.getAlt2Kind(),
                                   mlsAttr.getVersion(), mlsAttr.getOrder(),
@@ -169,14 +169,14 @@ class MlsConvertOpCanonicalization : public OpRewritePattern<ttg::ConvertLayoutO
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUMLSLOWERING
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUMLSLOWERING
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
-class TritonAMDGPUMlsLoweringPass
-    : public impl::TritonAMDGPUMlsLoweringBase<TritonAMDGPUMlsLoweringPass> {
+class TritonHCUGPUMlsLoweringPass
+    : public impl::TritonHCUGPUMlsLoweringBase<TritonHCUGPUMlsLoweringPass> {
 public:
-  using impl::TritonAMDGPUMlsLoweringBase<
-      TritonAMDGPUMlsLoweringPass>::TritonAMDGPUMlsLoweringBase;
+  using impl::TritonHCUGPUMlsLoweringBase<
+      TritonHCUGPUMlsLoweringPass>::TritonHCUGPUMlsLoweringBase;
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();

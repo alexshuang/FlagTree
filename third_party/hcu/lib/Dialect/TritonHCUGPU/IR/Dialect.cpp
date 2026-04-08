@@ -25,7 +25,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
-#include "third_party/amd/include/Utils/Utility.h"
+#include "third_party/hcu/include/Utils/Utility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/Triton/IR/Interfaces.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
@@ -34,41 +34,41 @@
 #include <limits>
 
 // clang-format off
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.cpp.inc"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.cpp.inc"
 // clang-format on
 
-#include "third_party/amd/include/Dialect/TritonAMDGPU/Utility/CommonUtils.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/Utility/CommonUtils.h"
 
 using namespace mlir;
-using namespace mlir::triton::amdgpu;
+using namespace mlir::triton::hcugpu;
 
-void mlir::triton::amdgpu::TritonAMDGPUDialect::initialize() {
+void mlir::triton::hcugpu::TritonHCUGPUDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.cpp.inc"
+#include "Dialect/TritonHCUGPU/IR/TritonHCUGPUAttrDefs.cpp.inc"
       >();
 
   addOperations<
 #define GET_OP_LIST
-#include "Dialect/TritonAMDGPU/IR/Ops.cpp.inc"
+#include "Dialect/TritonHCUGPU/IR/Ops.cpp.inc"
       >();
 
   addInterfaces<TritonInlinerInterface>();
 }
 
-#include "Dialect/TritonAMDGPU/IR/TritonAMDGPUEnums.cpp.inc"
+#include "Dialect/TritonHCUGPU/IR/TritonHCUGPUEnums.cpp.inc"
 
 #define GET_ATTRDEF_CLASSES
-#include "Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.cpp.inc"
+#include "Dialect/TritonHCUGPU/IR/TritonHCUGPUAttrDefs.cpp.inc"
 
 #define GET_OP_CLASSES
-#include "Dialect/TritonAMDGPU/IR/Ops.cpp.inc"
-#include "Dialect/TritonAMDGPU/IR/TritonAMDGPUOpInterfaces.cpp.inc"
+#include "Dialect/TritonHCUGPU/IR/Ops.cpp.inc"
+#include "Dialect/TritonHCUGPU/IR/TritonHCUGPUOpInterfaces.cpp.inc"
 
-namespace mlir::triton::amdgpu {
+namespace mlir::triton::hcugpu {
 
-std::string getStringFromCoords(mlir::triton::AMD::ElemLocationKey coords) {
+std::string getStringFromCoords(mlir::triton::HCU::ElemLocationKey coords) {
   std::string result;
   llvm::raw_string_ostream os(result);
   os << "[";
@@ -148,7 +148,7 @@ LogicalResult ExtractSliceOp::verify() {
   // 1. for every dst register
   for (int regId = 0; regId < dstRegCount; ++regId) {
     // 2.   get dst element coordinates relative to tile start
-    auto elemCoords = mlir::triton::AMD::getElemCoordinatesFromRegisters(
+    auto elemCoords = mlir::triton::HCU::getElemCoordinatesFromRegisters(
         linearLayoutDst, regId, ctx);
     // 3.   add coordinates of tile start relative to parent tensor
 
@@ -156,7 +156,7 @@ LogicalResult ExtractSliceOp::verify() {
       elemCoords[i].second += offsets[i];
 
     // 4.   check if exists source register which holds dst value
-    std::optional<int> srcReg = mlir::triton::AMD::getRegFromCoordinates(
+    std::optional<int> srcReg = mlir::triton::HCU::getRegFromCoordinates(
         linearLayoutSrc, elemCoords, ctx);
 
     if (!srcReg.has_value()) {
@@ -183,14 +183,14 @@ LogicalResult ExtractSliceOp::verify() {
 // matches one of the original tensors concatenated by a concat operation, we
 // can eliminate extract_slice op and use the original tensor directly.
 struct CononicalizeExtractSliceAndConcat
-    : public mlir::OpRewritePattern<amdgpu::ExtractSliceOp> {
+    : public mlir::OpRewritePattern<hcugpu::ExtractSliceOp> {
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult
-  matchAndRewrite(amdgpu::ExtractSliceOp op,
+  matchAndRewrite(hcugpu::ExtractSliceOp op,
                   PatternRewriter &rewriter) const override {
     // Try to match preceding Concat op
-    auto concatOp = op.getSource().getDefiningOp<amdgpu::ConcatOp>();
+    auto concatOp = op.getSource().getDefiningOp<hcugpu::ConcatOp>();
     if (!concatOp)
       return failure();
 
@@ -216,9 +216,9 @@ struct CononicalizeExtractSliceAndConcat
     std::iota(defaultOrder.rbegin(), defaultOrder.rend(), 0);
 
     // Convert multidimensional offset to concat operand index
-    auto multiDimSrcIdx = LLVM::AMD::multiDimElementwise<int64_t, int64_t>(
+    auto multiDimSrcIdx = LLVM::HCU::multiDimElementwise<int64_t, int64_t>(
         offset, srcShape, std::divides<unsigned>());
-    auto srcToDstShape = LLVM::AMD::multiDimElementwise<int64_t, int64_t>(
+    auto srcToDstShape = LLVM::HCU::multiDimElementwise<int64_t, int64_t>(
         dstShape, srcShape, std::divides<unsigned>());
     auto linearSrcIdx =
         mlir::LLVM::linearize(multiDimSrcIdx, srcToDstShape, defaultOrder);
@@ -548,7 +548,7 @@ LogicalResult ConcatOp::verify() {
                      linearLayoutDst.getBases().lookup(key)};
   };
 
-  auto srcToDstShape = LLVM::AMD::multiDimElementwise<int64_t, int64_t>(
+  auto srcToDstShape = LLVM::HCU::multiDimElementwise<int64_t, int64_t>(
       dstShape, srcShape, std::divides<unsigned>());
   std::vector<unsigned> defaultOrder(rank);
   std::iota(defaultOrder.rbegin(), defaultOrder.rend(), 0);
@@ -567,12 +567,12 @@ LogicalResult ConcatOp::verify() {
   // 1. for all elements in dst tensor
   for (int regId = 0; regId < dstRegCount; ++regId) {
     // 2.   get dst value location in tensor
-    auto elemCoords = mlir::triton::AMD::getElemCoordinatesFromRegisters(
+    auto elemCoords = mlir::triton::HCU::getElemCoordinatesFromRegisters(
         linearLayoutDst, regId, ctx);
     auto elemCoordsArray = llvm::to_vector(llvm::make_second_range(elemCoords));
 
     // 3.   find, which input tile holds the dst value
-    auto multiDimOperandIdx = LLVM::AMD::multiDimElementwise<int32_t, int64_t>(
+    auto multiDimOperandIdx = LLVM::HCU::multiDimElementwise<int32_t, int64_t>(
         elemCoordsArray, srcShape, std::divides<unsigned>());
     auto linearOperandIdx =
         mlir::LLVM::linearize(multiDimOperandIdx, srcToDstShape, defaultOrder);
@@ -582,7 +582,7 @@ LogicalResult ConcatOp::verify() {
     for (int dim = 0; dim < rank; ++dim)
       elemCoords[dim].second -= multiDimOperandIdx[dim] * srcShape[dim];
 
-    std::optional<int> srcReg = mlir::triton::AMD::getRegFromCoordinates(
+    std::optional<int> srcReg = mlir::triton::HCU::getRegFromCoordinates(
         linearLayoutSrc, elemCoords, ctx);
     // 5.   check if exist source register which holds dst value
 
@@ -662,7 +662,7 @@ LogicalResult LocalLoadPackedTransposedOp::verify() {
 
 // This pattern removes a concatOp if it has a single input operand.
 // This scenario can potentially happen as a result of ops refinement.
-mlir::LogicalResult foldConcatOpFromSingleSource(amdgpu::ConcatOp op,
+mlir::LogicalResult foldConcatOpFromSingleSource(hcugpu::ConcatOp op,
                                                  PatternRewriter &rewriter) {
   auto sources = op.getSources();
   if (sources.size() == 1) {
@@ -776,4 +776,4 @@ LogicalResult AsyncCopyMbarrierArriveOp::verify() {
   return success();
 }
 
-} // namespace mlir::triton::amdgpu
+} // namespace mlir::triton::hcugpu

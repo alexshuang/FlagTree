@@ -1,4 +1,4 @@
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 #include "triton/Conversion/TritonGPUToLLVM/FMADotUtility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
@@ -16,7 +16,7 @@ struct DotIntrinsic {
   SmallVector<Value> additionalArgs;
 };
 
-class AMDFMAVectorMultiplier : public FMAVectorMultiplier {
+class HCUFMAVectorMultiplier : public FMAVectorMultiplier {
   ConversionPatternRewriter &rewriter;
   Location loc;
   DotIntrinsic intrinsic;
@@ -34,7 +34,7 @@ class AMDFMAVectorMultiplier : public FMAVectorMultiplier {
     assert(arch.has_value() && "expected arch");
     DotIntrinsic chosenOp;
 
-    bool dotAvailable = AMD::supportsVDot(*arch);
+    bool dotAvailable = HCU::supportsVDot(*arch);
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     if (dotAvailable) {
       if ((aElemTy.isF16() || aElemTy.isBF16()) && dElemTy.isF32()) {
@@ -104,7 +104,7 @@ class AMDFMAVectorMultiplier : public FMAVectorMultiplier {
   }
 
 public:
-  AMDFMAVectorMultiplier(ConversionPatternRewriter &rewriter, DotOp op)
+  HCUFMAVectorMultiplier(ConversionPatternRewriter &rewriter, DotOp op)
       : rewriter(rewriter), loc(op.getLoc()), intrinsic(chooseIntrinsic(op)) {}
 
   Value multiplyVectors(ArrayRef<Value> a, ArrayRef<Value> b,
@@ -123,13 +123,13 @@ public:
 
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 LogicalResult convertAMDFMADot(DotOp op, DotOp::Adaptor adaptor,
                                const LLVMTypeConverter *typeConverter,
                                ConversionPatternRewriter &rewriter) {
-  AMDFMAVectorMultiplier multiplier(rewriter, op);
+  HCUFMAVectorMultiplier multiplier(rewriter, op);
   return parametricConvertFMADot(op, adaptor, typeConverter, rewriter,
                                  multiplier);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

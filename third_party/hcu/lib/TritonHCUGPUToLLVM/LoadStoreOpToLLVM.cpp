@@ -1,7 +1,7 @@
 #include "AsyncUtility.h"
 #include "AtomicRMWOpsEmitter.h"
 #include "BufferOpsEmitter.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "PatternTritonGPUOpToLLVM.h"
 #include "TDMUtility.h"
 #include "TargetInfo.h"
@@ -22,21 +22,21 @@ using namespace mlir;
 using namespace mlir::triton::gpu;
 
 using ::mlir::LLVM::getSharedMemoryBase;
-using ::mlir::LLVM::AMD::getVectorSize;
-using ::mlir::LLVM::AMD::llLoad;
-using ::mlir::LLVM::AMD::llStore;
-using ::mlir::triton::AMD::ISAFamily;
+using ::mlir::LLVM::HCU::getVectorSize;
+using ::mlir::LLVM::HCU::llLoad;
+using ::mlir::LLVM::HCU::llStore;
+using ::mlir::triton::HCU::ISAFamily;
 using ::mlir::triton::gpu::getTotalElemsPerThread;
 
 namespace {
 
-std::optional<const char *> getAMDGPUMemScopeStr(MemSyncScope scope) {
+std::optional<const char *> getHCUGPUMemScopeStr(MemSyncScope scope) {
   switch (scope) {
   case MemSyncScope::GPU:
     return "agent";
   case MemSyncScope::CTA:
     return "workgroup";
-  // The default AMDHSA LLVM Sync Scope is "system", so no string is
+  // The default HCUHSA LLVM Sync Scope is "system", so no string is
   // provided here
   case MemSyncScope::SYSTEM:
   default:
@@ -74,13 +74,13 @@ LogicalResult emitFence(Operation *op, ConversionPatternRewriter &rewriter,
   // This function emits an LLVM::FenceOp which will get lowered by the
   // LLVM backend to the right scope and ordering instructions, as
   // described in the "atomicrmw" entries for "global" address-space,
-  // in the "AMDHSA Memory Model Code Sequences GFX942"
-  // table in https://llvm.org/docs/AMDGPUUsage.html#memory-model-gfx942
+  // in the "HCUHSA Memory Model Code Sequences GFX942"
+  // table in https://llvm.org/docs/HCUGPUUsage.html#memory-model-gfx942
   //
   // Triton supports three scopes for atomic access
   // 1. System
-  // 2. GPU (default) ('Agent' for AMDGPU)
-  // 3. CTA ('Workgroup' for AMDGPU)
+  // 2. GPU (default) ('Agent' for HCUGPU)
+  // 3. CTA ('Workgroup' for HCUGPU)
   //
   // and 4 orderings
   // 1. Relaxed
@@ -151,7 +151,7 @@ LogicalResult emitFence(Operation *op, ConversionPatternRewriter &rewriter,
   if (MemSyncScope::SYSTEM == memScope)
     return rewriter.notifyMatchFailure(
         op, "System memory scope is not supported for Buffer Atomic Ops");
-  auto scopeStr = getAMDGPUMemScopeStr(memScope);
+  auto scopeStr = getHCUGPUMemScopeStr(memScope);
   if (!scopeStr)
     return rewriter.notifyMatchFailure(
         op, "Unsupported memory scope for Buffer Atomic Ops");
@@ -175,7 +175,7 @@ LogicalResult emitFence(Operation *op, ConversionPatternRewriter &rewriter,
 Value emitRedundantThreadPredicate(
     const llvm::MapVector<StringAttr, int32_t> &freeVarMasks,
     ConversionPatternRewriter &rewriter, Location loc,
-    const AMD::TargetInfo &targetInfo) {
+    const HCU::TargetInfo &targetInfo) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   auto ctx = rewriter.getContext();
   auto kLane = str_attr("lane");
@@ -217,7 +217,7 @@ std::pair<Block *, Block *> emitBranch(RewriterBase &rewriter, Location loc,
 
 // Contains some helper functions for both Load and Store conversions.
 struct LoadStoreConversionBase {
-  explicit LoadStoreConversionBase(const AMD::TargetInfo &targetInfo,
+  explicit LoadStoreConversionBase(const HCU::TargetInfo &targetInfo,
                                    ModuleAxisInfoAnalysis &axisAnalysisPass)
       : targetInfo(targetInfo), axisAnalysisPass(axisAnalysisPass) {}
 
@@ -278,14 +278,14 @@ struct LoadStoreConversionBase {
   }
 
 protected:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
   ModuleAxisInfoAnalysis &axisAnalysisPass;
 };
 
 // Contains some helper functions for direct to lds loads.
 struct DirectToLdsLoadConversionBase : public LoadStoreConversionBase {
   explicit DirectToLdsLoadConversionBase(
-      const AMD::TargetInfo &targetInfo,
+      const HCU::TargetInfo &targetInfo,
       ModuleAxisInfoAnalysis &axisAnalysisPass)
       : LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
 
@@ -327,14 +327,14 @@ struct DirectToLdsLoadConversionBase : public LoadStoreConversionBase {
 
     unsigned threadsPerWarp = lookupThreadsPerWarp(rewriter);
     if (!requiresSrcPtrSwizzling &&
-        !LLVM::AMD::canCoalesceWriteIntoSharedMemory(
+        !LLVM::HCU::canCoalesceWriteIntoSharedMemory(
             rewriter, srcToSharedLayout, threadsPerWarp, vectorSize)) {
       LDBG(*op << " does not write coalesced into LDS and is not swizzled");
       return failure();
     }
 
     if (requiresSrcPtrSwizzling &&
-        !LLVM::AMD::doesSwizzleInsideWarp(rewriter, srcToSharedLayout,
+        !LLVM::HCU::doesSwizzleInsideWarp(rewriter, srcToSharedLayout,
                                           threadsPerWarp)) {
       LDBG(*op << " does swizzle across warp boundaries");
       return failure();
@@ -482,7 +482,7 @@ struct DirectToLdsLoadConversionBase : public LoadStoreConversionBase {
   LogicalResult lowerDirectToLDSLoad(
       RewriterBase &rewriter, Location loc, RankedTensorType srcTy,
       MemDescType dstTy, SmallVector<Value> loadVals, Value llDst,
-      Type resElemTy, unsigned vec, triton::AMD::ISAFamily isaFamily,
+      Type resElemTy, unsigned vec, triton::HCU::ISAFamily isaFamily,
       std::function<SmallVector<Value>(RewriterBase &, Location,
                                        ArrayRef<Value>, Value, int, VectorType,
                                        Value)>
@@ -515,7 +515,7 @@ struct DirectToLdsLoadConversionBase : public LoadStoreConversionBase {
 
     Value ctaMulticastMask;
     if (isaFamily == ISAFamily::GFX1250) {
-      ctaMulticastMask = LLVM::AMD::emitCtaMulticastMask(
+      ctaMulticastMask = LLVM::HCU::emitCtaMulticastMask(
           rewriter, loc, targetInfo.getClusterCTAId(rewriter, loc), srcLayout);
     }
 
@@ -611,7 +611,7 @@ struct DirectToLdsLoadConversionBase : public LoadStoreConversionBase {
 struct LoadOpConversion : public ConvertOpToLLVMPattern<triton::LoadOp>,
                           public LoadStoreConversionBase {
   LoadOpConversion(LLVMTypeConverter &converter,
-                   const AMD::TargetInfo &targetInfo,
+                   const HCU::TargetInfo &targetInfo,
                    ModuleAxisInfoAnalysis &axisAnalysisPass,
                    PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
@@ -661,7 +661,7 @@ struct LoadOpConversion : public ConvertOpToLLVMPattern<triton::LoadOp>,
       Value clusterCTAId = targetInfo.getClusterCTAId(rewriter, loc);
       auto regLayout =
           triton::gpu::toLinearLayout(cast<RankedTensorType>(ptr.getType()));
-      multicastMask = LLVM::AMD::emitCtaMulticastMask(rewriter, loc,
+      multicastMask = LLVM::HCU::emitCtaMulticastMask(rewriter, loc,
                                                       clusterCTAId, regLayout);
     }
 
@@ -713,21 +713,21 @@ struct LoadOpConversion : public ConvertOpToLLVMPattern<triton::LoadOp>,
 };
 
 struct BufferLoadOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::BufferLoadOp>,
+    : public ConvertOpToLLVMPattern<triton::hcugpu::BufferLoadOp>,
       public LoadStoreConversionBase {
   BufferLoadOpConversion(LLVMTypeConverter &converter,
-                         const AMD::TargetInfo &targetInfo,
+                         const HCU::TargetInfo &targetInfo,
                          ModuleAxisInfoAnalysis &axisAnalysisPass,
                          PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
         LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::BufferLoadOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::BufferLoadOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
-    LLVM::AMD::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
+    LLVM::HCU::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
 
     // original values
     Value ptr = op.getPtr();
@@ -799,21 +799,21 @@ struct BufferLoadOpConversion
 };
 
 struct BufferLoadToLocalOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::BufferLoadToLocalOp>,
+    : public ConvertOpToLLVMPattern<triton::hcugpu::BufferLoadToLocalOp>,
       public DirectToLdsLoadConversionBase {
   BufferLoadToLocalOpConversion(LLVMTypeConverter &converter,
-                                const AMD::TargetInfo &targetInfo,
+                                const HCU::TargetInfo &targetInfo,
                                 ModuleAxisInfoAnalysis &axisAnalysisPass,
                                 PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
         DirectToLdsLoadConversionBase(targetInfo, axisAnalysisPass) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::BufferLoadToLocalOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::BufferLoadToLocalOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
-    LLVM::AMD::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
+    LLVM::HCU::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
 
     // Original values
     Value ptr = op.getPtr();
@@ -935,7 +935,7 @@ struct BufferLoadToLocalOpConversion
           vecTy, vecBytesVal, rsrcDesc, offsetElem, shmemAddr,
           hasOther ? b.true_val() : maybeSwizzledMaskElem, op.getCache());
       if (targetInfo.requiresAliasInfoForAsyncOps())
-        AMD::addAsyncCopyAliasScope(bufferLoadToLds);
+        HCU::addAsyncCopyAliasScope(bufferLoadToLds);
 
       if (hasOther) {
         emitOtherStore(rewriter, loc, this->getTypeConverter(), vecTy, maskElem,
@@ -968,7 +968,7 @@ struct AsyncCopyGlobalToLocalOpConversion
     : public ConvertOpToLLVMPattern<triton::gpu::AsyncCopyGlobalToLocalOp>,
       public DirectToLdsLoadConversionBase {
   AsyncCopyGlobalToLocalOpConversion(LLVMTypeConverter &converter,
-                                     const AMD::TargetInfo &targetInfo,
+                                     const HCU::TargetInfo &targetInfo,
                                      ModuleAxisInfoAnalysis &axisAnalysisPass,
                                      PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
@@ -1097,12 +1097,12 @@ struct AsyncCopyGlobalToLocalOpConversion
   }
 
   void emitAsyncLoad(RewriterBase &rewriter, Location loc,
-                     AMD::TargetInfo targetInfo, int vecBits, Value srcPtr,
+                     HCU::TargetInfo targetInfo, int vecBits, Value srcPtr,
                      Value shmemAddr, triton::CacheModifier cacheMod,
                      Value multicastMask) const {
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     int32_t cacheModifiers =
-        mlir::LLVM::AMD::getCtrlBitsForCacheModifierOnTarget(
+        mlir::LLVM::HCU::getCtrlBitsForCacheModifierOnTarget(
             cacheMod, /*isLoad=*/true, targetInfo);
 
     if (llvm::is_contained({ISAFamily::CDNA3, ISAFamily::CDNA4},
@@ -1111,7 +1111,7 @@ struct AsyncCopyGlobalToLocalOpConversion
           rewriter, loc, srcPtr, shmemAddr, vecBits / 8,
           /*offset=*/0, cacheModifiers, nullptr, nullptr, nullptr);
       if (targetInfo.requiresAliasInfoForAsyncOps())
-        AMD::addAsyncCopyAliasScope(globalLoadLdsOp);
+        HCU::addAsyncCopyAliasScope(globalLoadLdsOp);
     } else if (targetInfo.getISAFamily() == ISAFamily::GFX1250) {
       if (cacheMod != triton::CacheModifier::NONE) {
         emitRemark(loc) << "cache modifiers not yet implemented on gfx1250";
@@ -1136,16 +1136,16 @@ struct AsyncCopyGlobalToLocalOpConversion
 
 struct AsyncTDMCopyGlobalToLocalOpConversion
     : public ConvertOpToLLVMPattern<
-          triton::amdgpu::AsyncTDMCopyGlobalToLocalOp>,
+          triton::hcugpu::AsyncTDMCopyGlobalToLocalOp>,
       public LoadStoreConversionBase {
   AsyncTDMCopyGlobalToLocalOpConversion(
-      LLVMTypeConverter &converter, const AMD::TargetInfo &targetInfo,
+      LLVMTypeConverter &converter, const HCU::TargetInfo &targetInfo,
       ModuleAxisInfoAnalysis &axisAnalysisPass, PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
         LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::AsyncTDMCopyGlobalToLocalOp op,
+  matchAndRewrite(triton::hcugpu::AsyncTDMCopyGlobalToLocalOp op,
                   OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto ctx = rewriter.getContext();
@@ -1199,7 +1199,7 @@ struct AsyncTDMCopyGlobalToLocalOpConversion
       barrierPtr = smemObj.getBase();
     }
 
-    mlir::LLVM::AMD::emitTDMOperation(rewriter, loc, getTypeConverter(), desc,
+    mlir::LLVM::HCU::emitTDMOperation(rewriter, loc, getTypeConverter(), desc,
                                       blockShape, numWarps, padInterval,
                                       padAmount, offset, dstPtr, op.getPred(),
                                       elementType, barrierPtr, /*isLoad=*/true);
@@ -1211,16 +1211,16 @@ struct AsyncTDMCopyGlobalToLocalOpConversion
 
 struct AsyncTDMCopyLocalToGlobalOpConversion
     : public ConvertOpToLLVMPattern<
-          triton::amdgpu::AsyncTDMCopyLocalToGlobalOp>,
+          triton::hcugpu::AsyncTDMCopyLocalToGlobalOp>,
       public LoadStoreConversionBase {
   AsyncTDMCopyLocalToGlobalOpConversion(
-      LLVMTypeConverter &converter, const AMD::TargetInfo &targetInfo,
+      LLVMTypeConverter &converter, const HCU::TargetInfo &targetInfo,
       ModuleAxisInfoAnalysis &axisAnalysisPass, PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
         LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::AsyncTDMCopyLocalToGlobalOp op,
+  matchAndRewrite(triton::hcugpu::AsyncTDMCopyLocalToGlobalOp op,
                   OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto ctx = rewriter.getContext();
@@ -1248,7 +1248,7 @@ struct AsyncTDMCopyLocalToGlobalOpConversion
     SmallVector<Value> offset = adaptor.getIndices();
     int numWarps = triton::gpu::lookupNumWarps(op);
 
-    mlir::LLVM::AMD::emitTDMOperation(
+    mlir::LLVM::HCU::emitTDMOperation(
         rewriter, loc, getTypeConverter(), desc, blockShape, numWarps,
         /*padInterval=*/0, /*padAmount=*/0, offset, dstPtr, b.true_val(),
         elementType, /*barrierPtr=*/nullptr,
@@ -1262,7 +1262,7 @@ struct AsyncTDMCopyLocalToGlobalOpConversion
 struct StoreOpConversion : public ConvertOpToLLVMPattern<triton::StoreOp>,
                            public LoadStoreConversionBase {
   StoreOpConversion(LLVMTypeConverter &converter,
-                    const AMD::TargetInfo &targetInfo,
+                    const HCU::TargetInfo &targetInfo,
                     ModuleAxisInfoAnalysis &axisAnalysisPass,
                     PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
@@ -1343,21 +1343,21 @@ struct StoreOpConversion : public ConvertOpToLLVMPattern<triton::StoreOp>,
 };
 
 struct BufferAtomicRMWOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::BufferAtomicRMWOp>,
+    : public ConvertOpToLLVMPattern<triton::hcugpu::BufferAtomicRMWOp>,
       public LoadStoreConversionBase {
   BufferAtomicRMWOpConversion(LLVMTypeConverter &converter,
-                              const AMD::TargetInfo &targetInfo,
+                              const HCU::TargetInfo &targetInfo,
                               ModuleAxisInfoAnalysis &axisAnalysisPass,
                               PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
         LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::BufferAtomicRMWOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::BufferAtomicRMWOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
-    LLVM::AMD::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
+    LLVM::HCU::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
 
     // original values
     Value ptr = op.getPtr();
@@ -1411,7 +1411,7 @@ struct BufferAtomicRMWOpConversion
     SmallVector<Value> loadedVals;
 
     // We need to manually emit memory fences (LLVM doesn't do this for buffer
-    // ops) see: https://llvm.org/docs/AMDGPUUsage.html#memory-model-gfx942
+    // ops) see: https://llvm.org/docs/HCUGPUUsage.html#memory-model-gfx942
     auto memOrdering = op.getSem();
     auto memScope = op.getScope();
     if (failed(emitFence(op, rewriter, loc, memOrdering, memScope,
@@ -1481,21 +1481,21 @@ struct BufferAtomicRMWOpConversion
 };
 
 struct BufferAtomicCASOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::BufferAtomicCASOp>,
+    : public ConvertOpToLLVMPattern<triton::hcugpu::BufferAtomicCASOp>,
       public LoadStoreConversionBase {
   BufferAtomicCASOpConversion(LLVMTypeConverter &converter,
-                              const AMD::TargetInfo &targetInfo,
+                              const HCU::TargetInfo &targetInfo,
                               ModuleAxisInfoAnalysis &axisAnalysisPass,
                               PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
         LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::BufferAtomicCASOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::BufferAtomicCASOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
-    LLVM::AMD::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
+    LLVM::HCU::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
 
     // original values
     Value ptr = op.getPtr();
@@ -1595,21 +1595,21 @@ struct BufferAtomicCASOpConversion
 };
 
 struct BufferStoreOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::BufferStoreOp>,
+    : public ConvertOpToLLVMPattern<triton::hcugpu::BufferStoreOp>,
       public LoadStoreConversionBase {
   BufferStoreOpConversion(LLVMTypeConverter &converter,
-                          const AMD::TargetInfo &targetInfo,
+                          const HCU::TargetInfo &targetInfo,
                           ModuleAxisInfoAnalysis &axisAnalysisPass,
                           PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
         LoadStoreConversionBase(targetInfo, axisAnalysisPass) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::BufferStoreOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::BufferStoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
-    LLVM::AMD::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
+    LLVM::HCU::BufferEmitter bufferEmitter(rewriter, loc, targetInfo);
 
     // original values
     Value ptr = op.getPtr();
@@ -1679,7 +1679,7 @@ struct AtomicCASOpConversion
     : public ConvertOpToLLVMPattern<triton::AtomicCASOp>,
       public LoadStoreConversionBase {
   AtomicCASOpConversion(LLVMTypeConverter &converter,
-                        const AMD::TargetInfo &targetInfo,
+                        const HCU::TargetInfo &targetInfo,
                         ModuleAxisInfoAnalysis &axisAnalysisPass,
                         PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
@@ -1706,11 +1706,11 @@ struct AtomicCASOpConversion
     auto memOrdering = op.getSem();
     auto atomicMemOrdering = getMemoryOrdering(memOrdering);
     if (!atomicMemOrdering)
-      return rewriter.notifyMatchFailure(op, "Unknown AMDGPU memory ordering");
+      return rewriter.notifyMatchFailure(op, "Unknown HCUGPU memory ordering");
     auto scope = op.getScope();
-    auto scopeStr = getAMDGPUMemScopeStr(scope);
+    auto scopeStr = getHCUGPUMemScopeStr(scope);
     if (!scopeStr)
-      return rewriter.notifyMatchFailure(op, "Unknown AMDGPU memory scope");
+      return rewriter.notifyMatchFailure(op, "Unknown HCUGPU memory scope");
 
     // deal with tensor or scalar
     auto valueTy = op.getResult().getType();
@@ -1817,7 +1817,7 @@ struct AtomicRMWOpConversion
     : public ConvertOpToLLVMPattern<triton::AtomicRMWOp>,
       public LoadStoreConversionBase {
   AtomicRMWOpConversion(LLVMTypeConverter &converter,
-                        const AMD::TargetInfo &targetInfo,
+                        const HCU::TargetInfo &targetInfo,
                         ModuleAxisInfoAnalysis &axisAnalysisPass,
                         PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit),
@@ -1837,12 +1837,12 @@ struct AtomicRMWOpConversion
     if (!memOrder)
       return rewriter.notifyMatchFailure(op, "Unsupported RMW memory order");
 
-    auto scopeStr = getAMDGPUMemScopeStr(op.getScope());
+    auto scopeStr = getHCUGPUMemScopeStr(op.getScope());
     if (!scopeStr)
       return rewriter.notifyMatchFailure(op, "Unsupported RMW scope");
 
     auto emitter =
-        LLVM::AMD::AtomicRMWEmitter(targetInfo, *binOp, *memOrder, *scopeStr);
+        LLVM::HCU::AtomicRMWEmitter(targetInfo, *binOp, *memOrder, *scopeStr);
 
     Value val = op.getVal();
     Value ptr = op.getPtr();
@@ -2003,14 +2003,14 @@ struct AtomicRMWOpConversion
 };
 
 struct AsyncWaitOpConversion
-    : public ConvertOpToLLVMPattern<amdgpu::AsyncWaitOp> {
+    : public ConvertOpToLLVMPattern<hcugpu::AsyncWaitOp> {
   AsyncWaitOpConversion(LLVMTypeConverter &converter,
-                        const AMD::TargetInfo &targetInfo,
+                        const HCU::TargetInfo &targetInfo,
                         PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit), targetInfo(targetInfo) {}
 
   LogicalResult
-  matchAndRewrite(amdgpu::AsyncWaitOp op, OpAdaptor adaptor,
+  matchAndRewrite(hcugpu::AsyncWaitOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -2062,16 +2062,16 @@ struct AsyncWaitOpConversion
   }
 
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 };
 
 struct AsyncTDMWaitConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::AsyncTDMWait> {
+    : public ConvertOpToLLVMPattern<triton::hcugpu::AsyncTDMWait> {
   AsyncTDMWaitConversion(LLVMTypeConverter &converter, PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit) {}
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::AsyncTDMWait op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::AsyncTDMWait op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -2099,11 +2099,11 @@ struct AsyncCommitGroupOpConversion
 };
 
 struct AsyncCopyMbarrierArriveOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::AsyncCopyMbarrierArriveOp> {
+    : public ConvertOpToLLVMPattern<triton::hcugpu::AsyncCopyMbarrierArriveOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::AsyncCopyMbarrierArriveOp op,
+  matchAndRewrite(triton::hcugpu::AsyncCopyMbarrierArriveOp op,
                   OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
@@ -2122,7 +2122,7 @@ struct AsyncCopyMbarrierArriveOpConversion
 
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 void populateLoadStoreOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                        const TargetInfo &targetInfo,
                                        RewritePatternSet &patterns,
@@ -2141,4 +2141,4 @@ void populateLoadStoreOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
   patterns.add<AsyncCommitGroupOpConversion>(typeConverter, benefit);
   patterns.add<AsyncCopyMbarrierArriveOpConversion>(typeConverter, benefit);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

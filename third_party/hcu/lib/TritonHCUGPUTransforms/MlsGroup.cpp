@@ -1,4 +1,4 @@
-#include "TritonAMDGPUTransforms/MlsGroup.h"
+#include "TritonHCUGPUTransforms/MlsGroup.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace mlir {

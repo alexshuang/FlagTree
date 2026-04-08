@@ -1,7 +1,7 @@
-#include "third_party/amd/include/Dialect/TritonAMDGPU/Utility/CommonUtils.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/Utility/CommonUtils.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 SmallVector<scf::ForOp> getLeafForOps(triton::FuncOp funcOp) {
   SmallVector<scf::ForOp> allOps;
   funcOp->walk([&](scf::ForOp forOp) { allOps.push_back(forOp); });
@@ -59,4 +59,4 @@ std::optional<int> getRegFromCoordinates(triton::LinearLayout ll,
     return std::nullopt;
   return regId;
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

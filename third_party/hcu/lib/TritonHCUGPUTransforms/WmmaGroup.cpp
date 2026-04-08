@@ -1,4 +1,4 @@
-#include "TritonAMDGPUTransforms/WmmaGroup.h"
+#include "TritonHCUGPUTransforms/WmmaGroup.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/DenseMap.h"

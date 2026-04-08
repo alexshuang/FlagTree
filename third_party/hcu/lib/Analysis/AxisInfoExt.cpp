@@ -1,7 +1,7 @@
-#include "third_party/amd/include/Analysis/AxisInfoExt.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "third_party/hcu/include/Analysis/AxisInfoExt.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 namespace {
 template <typename OpTy> class CastOpAxisInfoVisitor : public AxisInfoVisitor {
@@ -19,7 +19,7 @@ public:
 } // namespace
 
 void AxisInfoExt::addVisitors(mlir::triton::AxisInfoVisitorList &visitors) {
-  visitors.append<CastOpAxisInfoVisitor<amdgpu::ExtractSliceOp>>();
+  visitors.append<CastOpAxisInfoVisitor<hcugpu::ExtractSliceOp>>();
   return;
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

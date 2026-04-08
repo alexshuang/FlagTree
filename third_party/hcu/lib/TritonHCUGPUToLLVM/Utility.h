@@ -1,9 +1,9 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_UTILITY_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_UTILITY_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_UTILITY_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_UTILITY_H_
 
 #include "TargetInfo.h"
-#include "TritonAMDGPUToLLVM/GCNAsmFormat.h"
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUToLLVM/GCNAsmFormat.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -12,22 +12,22 @@
 #include "triton/Conversion/MLIRTypes.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 
 enum class MemoryOp { Load, Store };
 
 Value shuffleXor(Location loc, RewriterBase &rewriter, Value val, int i,
-                 mlir::triton::AMD::ISAFamily isaFamily =
-                     mlir::triton::AMD::ISAFamily::Unknown);
+                 mlir::triton::HCU::ISAFamily isaFamily =
+                     mlir::triton::HCU::ISAFamily::Unknown);
 Value shuffleUp(Location loc, RewriterBase &rewriter, Value val, int i,
-                mlir::triton::AMD::ISAFamily isaFamily =
-                    mlir::triton::AMD::ISAFamily::Unknown);
+                mlir::triton::HCU::ISAFamily isaFamily =
+                    mlir::triton::HCU::ISAFamily::Unknown);
 Value shuffleIdx(Location loc, RewriterBase &rewriter, Value val, int i,
-                 mlir::triton::AMD::ISAFamily isaFamily =
-                     mlir::triton::AMD::ISAFamily::Unknown);
+                 mlir::triton::HCU::ISAFamily isaFamily =
+                     mlir::triton::HCU::ISAFamily::Unknown);
 Value shuffleIdx(Location loc, RewriterBase &rewriter, Value val, Value i,
-                 mlir::triton::AMD::ISAFamily isaFamily =
-                     mlir::triton::AMD::ISAFamily::Unknown);
+                 mlir::triton::HCU::ISAFamily isaFamily =
+                     mlir::triton::HCU::ISAFamily::Unknown);
 
 Value permute(Location loc, RewriterBase &rewriter, Value a, Value b,
               Value selector);
@@ -66,7 +66,7 @@ std::pair<bool, bool> getCacheModifierFlagsForLoadStore(LLVM::CallOp);
 // Get the cachepolicy value for a cache modifier
 int32_t
 getCtrlBitsForCacheModifierOnTarget(triton::CacheModifier, bool,
-                                    const mlir::triton::AMD::TargetInfo &);
+                                    const mlir::triton::HCU::TargetInfo &);
 
 // Get cache modifier information for buffer atomics
 int32_t getCtrlBitsForBufferAtomicsOnGFX_942_950(bool setSC0, bool setSC1,
@@ -125,7 +125,7 @@ bool isChainDotTail(mlir::triton::DotOpInterface dotOp);
 // conversion
 SmallVector<Value> upcast8xMxfp4_SW(RewriterBase &rewriter, Operation *op,
                                     bool toFp16, Value packedVec,
-                                    mlir::triton::AMD::ISAFamily isaFamily,
+                                    mlir::triton::HCU::ISAFamily isaFamily,
                                     Value scale = nullptr);
 
 template <typename ConvertOp>
@@ -191,6 +191,6 @@ upcast4xMxfp8_HW(RewriterBase &rewriter, Location loc, ArrayRef<Value> xVals,
                                       /*srcLoHiSel=*/true));
   return results;
 }
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_UTILITY_H_
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_UTILITY_H_

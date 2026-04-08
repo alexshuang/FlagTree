@@ -1,14 +1,14 @@
 #include "TargetInfo.h"
-#include "TritonAMDGPUToLLVM/GCNAsmFormat.h"
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUToLLVM/GCNAsmFormat.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 #include "Utility.h"
-#include "amd/lib/TritonAMDGPUToLLVM/AsyncUtility.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/AsyncUtility.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 
-using mlir::triton::AMD::DppCtrl;
-namespace mlir::triton::AMD {
+using mlir::triton::HCU::DppCtrl;
+namespace mlir::triton::HCU {
 
 namespace {
 template <typename T>
@@ -132,16 +132,16 @@ void TargetInfo::storeDShared(RewriterBase &rewriter, Location loc, Value ptr,
                               Value pred) const {
   if (ctaId.has_value()) {
     llvm::report_fatal_error(
-        "AMDGPU does not support cross-CTA shared memory transfers");
+        "HCUGPU does not support cross-CTA shared memory transfers");
   }
-  mlir::LLVM::AMD::llStore(rewriter, loc, ptr, val, pred);
+  mlir::LLVM::HCU::llStore(rewriter, loc, ptr, val, pred);
 }
 
 std::optional<TargetInfo::LDSTransLoadParams>
 TargetInfo::queryLDSTransLoadParams(int bitWidth) const {
   auto isaFamily = getISAFamily();
-  bool isGFX1250 = isaFamily == AMD::ISAFamily::GFX1250;
-  bool isCDNA4 = isaFamily == AMD::ISAFamily::CDNA4;
+  bool isGFX1250 = isaFamily == HCU::ISAFamily::GFX1250;
+  bool isCDNA4 = isaFamily == HCU::ISAFamily::CDNA4;
   bool canUseTransLoad =
       (isCDNA4 || isGFX1250) && llvm::is_contained({16, 8, 4, 6}, bitWidth);
   if (!canUseTransLoad)
@@ -157,47 +157,47 @@ Value TargetInfo::loadDShared(RewriterBase &rewriter, Location loc, Value ptr,
                               Value pred, Operation *localLoadOp) const {
   if (ctaId.has_value()) {
     llvm::report_fatal_error(
-        "AMDGPU does not support cross-CTA shared memory transfers");
+        "HCUGPU does not support cross-CTA shared memory transfers");
   }
   Value falseVal = LLVM::ConstantOp::create(rewriter, loc, elemTy,
                                             rewriter.getZeroAttr(elemTy));
   bool addAliasGroup = localLoadOp && requiresAliasInfoForAsyncOps() &&
                        isSyncedViaAsyncWait(localLoadOp);
-  return mlir::LLVM::AMD::llLoad(rewriter, loc, ptr, elemTy, pred, falseVal, {},
+  return mlir::LLVM::HCU::llLoad(rewriter, loc, ptr, elemTy, pred, falseVal, {},
                                  triton::CacheModifier::NONE, addAliasGroup);
 }
 
 Value TargetInfo::shuffleXor(RewriterBase &rewriter, Location loc, Value val,
                              int i) const {
-  return LLVM::AMD::shuffleXor(loc, rewriter, val, i, getISAFamily());
+  return LLVM::HCU::shuffleXor(loc, rewriter, val, i, getISAFamily());
 }
 
 Value TargetInfo::shuffleUp(RewriterBase &rewriter, Location loc, Value val,
                             int i) const {
-  return LLVM::AMD::shuffleUp(loc, rewriter, val, i, getISAFamily());
+  return LLVM::HCU::shuffleUp(loc, rewriter, val, i, getISAFamily());
 }
 
 Value TargetInfo::shuffleIdx(RewriterBase &rewriter, Location loc, Value val,
                              int i) const {
-  return LLVM::AMD::shuffleIdx(loc, rewriter, val, i, getISAFamily());
+  return LLVM::HCU::shuffleIdx(loc, rewriter, val, i, getISAFamily());
 }
 
 Value TargetInfo::shuffleIdx(RewriterBase &rewriter, Location loc, Value val,
                              Value i) const {
-  return LLVM::AMD::shuffleIdx(loc, rewriter, val, i, getISAFamily());
+  return LLVM::HCU::shuffleIdx(loc, rewriter, val, i, getISAFamily());
 }
 
 Value TargetInfo::permute(RewriterBase &rewriter, Location loc, Value a,
                           Value b, Value selector) const {
   // Warning: The `a` and `b` operands are ordered to align with Nvidia's `prmt`
-  // Both use little-endian ordering, but AMD puts the MSBs of the data in the
+  // Both use little-endian ordering, but HCU puts the MSBs of the data in the
   // 0-th operand.
-  return LLVM::AMD::permute(loc, rewriter, b, a, selector);
+  return LLVM::HCU::permute(loc, rewriter, b, a, selector);
 }
 
 Value TargetInfo::programId(RewriterBase &rewriter, Location loc,
                             ModuleOp moduleOp, ProgramIDDim axis) const {
-  return LLVM::AMD::llGetPid(loc, rewriter, moduleOp, axis);
+  return LLVM::HCU::llGetPid(loc, rewriter, moduleOp, axis);
 }
 
 // Cast and sext values into specific-length int to meet the requirements of
@@ -380,7 +380,7 @@ bool TargetInfo::warpReduce(RewriterBase &rewriter, Location loc,
     auto valType = acc[i].getType();
 
     // Here's the implementation of full-wavefront reduction using dpp.
-    // https://gpuopen.com/learn/amd-gcn-assembly-cross-lane-operations/
+    // https://gpuopen.com/learn/hcu-gcn-assembly-cross-lane-operations/
     //
     // Each step has a v_mov_dpp instruction following the redux op. In
     // some cases, the lower-level compiler could merge them into single
@@ -609,7 +609,7 @@ int TargetInfo::getAddressSpace(Attribute addressSpace) const {
 }
 
 bool TargetInfo::supportVectorizedAtomics() const {
-  // Note: not currently tested or used, but AMD generally supports vectorized
+  // Note: not currently tested or used, but HCU generally supports vectorized
   // atomics.
   return true;
 }
@@ -671,7 +671,7 @@ bool TargetInfo::supportsClusterLoadBitWidth(int biwWidth) const {
 void TargetInfo::localLoadOpAnnotation(triton::gpu::LocalLoadOp localLoadOp,
                                        Operation *llLoadOp) const {
   if (requiresAliasInfoForAsyncOps())
-    AMD::addLocalLoadNoAliasScope(localLoadOp, cast<LLVM::LoadOp>(llLoadOp));
+    HCU::addLocalLoadNoAliasScope(localLoadOp, cast<LLVM::LoadOp>(llLoadOp));
 }
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

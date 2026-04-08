@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
-#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
+#include "mlir/Dialect/HCUGPU/Utils/Chipset.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -12,12 +12,12 @@
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
-#include "third_party/amd/include/TritonAMDGPUToLLVM/Passes.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "third_party/hcu/include/TritonHCUGPUToLLVM/Passes.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h"
 
 namespace mlir::triton {
-#define GEN_PASS_DEF_AMDGPUCONVERTWARPSPECIALIZETOLLVM
-#include "TritonAMDGPUToLLVM/Passes.h.inc"
+#define GEN_PASS_DEF_HCUGPUCONVERTWARPSPECIALIZETOLLVM
+#include "TritonHCUGPUToLLVM/Passes.h.inc"
 } // namespace mlir::triton
 
 using namespace mlir;
@@ -238,7 +238,7 @@ static LogicalResult rewriteWarpGroupBarriers(LLVM::LLVMFuncOp func,
 }
 
 static void rewritePartitionRegions(WarpSpecializeOp ws, SmallVector<Block *> &sinkBlocks,
-                                    const AMD::TargetInfo &targetInfo) {
+                                    const HCU::TargetInfo &targetInfo) {
   TritonLLVMIRRewriter b(ws.getLoc(), ws.getContext());
 
   for (auto [idx, partition] : llvm::enumerate(ws.getPartitionRegions())) {
@@ -332,7 +332,7 @@ static void rewritePartitionRegions(WarpSpecializeOp ws, SmallVector<Block *> &s
   }
 
 static LogicalResult lowerWarpSpecialize(LLVM::LLVMFuncOp func,
-                                         const AMD::TargetInfo &targetInfo,
+                                         const HCU::TargetInfo &targetInfo,
                                          int waspNumLoadWarps,
                                          int waspNumMmaWarps,
                                          bool wdraEnabled, 
@@ -596,10 +596,10 @@ static LogicalResult lowerWarpSpecialize(LLVM::LLVMFuncOp func,
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct AMDGPUConvertWarpSpecializeToLLVM
-    : public mlir::triton::impl::AMDGPUConvertWarpSpecializeToLLVMBase<
-          AMDGPUConvertWarpSpecializeToLLVM> {
-  explicit AMDGPUConvertWarpSpecializeToLLVM(StringRef targetArch, int waspNumLoadWarps, 
+struct HCUGPUConvertWarpSpecializeToLLVM
+    : public mlir::triton::impl::HCUGPUConvertWarpSpecializeToLLVMBase<
+          HCUGPUConvertWarpSpecializeToLLVM> {
+  explicit HCUGPUConvertWarpSpecializeToLLVM(StringRef targetArch, int waspNumLoadWarps, 
       int waspNumMmaWarps, bool wdraEnabled, int wdraNumLoadRegs, 
       int wdraNumMmaRegsMain, int wdraNumMmaRegsTail) {
 
@@ -615,7 +615,7 @@ struct AMDGPUConvertWarpSpecializeToLLVM
   void runOnOperation() override {
     ModuleOp mod = getOperation();
 
-    AMD::TargetInfo targetInfo(this->arch.getValue());
+    HCU::TargetInfo targetInfo(this->arch.getValue());
     if (targetInfo.getGPUKind() != llvm::AMDGPU::GK_GFX946) {
       mod.emitError("wasp unsupported target: '") << this->arch.getValue() << "'";
       return signalPassFailure();
@@ -647,10 +647,10 @@ struct AMDGPUConvertWarpSpecializeToLLVM
         return signalPassFailure();
 
     // Convert GPU dialect to ROCDL dialect
-    FailureOr<mlir::amdgpu::Chipset> maybeChipset = mlir::amdgpu::Chipset::parse(this->arch.getValue());
+    FailureOr<mlir::hcugpu::Chipset> maybeChipset = mlir::hcugpu::Chipset::parse(this->arch.getValue());
     if (failed(maybeChipset)) {
       emitError(UnknownLoc::get(&getContext()),
-                "Invalid AMDGPU chipset name: " + this->arch.getValue());
+                "Invalid HCUGPU chipset name: " + this->arch.getValue());
       return signalPassFailure();
     }
 
@@ -663,7 +663,7 @@ struct AMDGPUConvertWarpSpecializeToLLVM
     // Create patterns for GPU to ROCDL conversion
     RewritePatternSet gpuPatterns(&getContext());
     mlir::populateGpuToROCDLConversionPatterns(
-        typeConverter, gpuPatterns, mlir::gpu::amd::HIP, *maybeChipset);
+        typeConverter, gpuPatterns, mlir::gpu::hcu::HIP, *maybeChipset);
 
     // Apply GPU to ROCDL conversion
     if (failed(applyPartialConversion(mod, gpuTarget, std::move(gpuPatterns)))) {
@@ -707,9 +707,9 @@ struct AMDGPUConvertWarpSpecializeToLLVM
 namespace mlir::triton {
 
   std::unique_ptr<OperationPass<ModuleOp>>
-  createAMDGPUConvertWarpSpecializeToLLVM(StringRef targetArch, int waspNumLoadWarps, int waspNumMmaWarps, 
+  createHCUGPUConvertWarpSpecializeToLLVM(StringRef targetArch, int waspNumLoadWarps, int waspNumMmaWarps, 
      bool wdraEnabled, int wdraNumLoadRegs, int wdraNumMmaRegsMain, int wdraNumMmaRegsTail) {
-    return std::make_unique<AMDGPUConvertWarpSpecializeToLLVM>(targetArch, waspNumLoadWarps, waspNumMmaWarps,
+    return std::make_unique<HCUGPUConvertWarpSpecializeToLLVM>(targetArch, waspNumLoadWarps, waspNumMmaWarps,
       wdraEnabled, wdraNumLoadRegs, wdraNumMmaRegsMain, wdraNumMmaRegsTail);
   }
   

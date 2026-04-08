@@ -1,9 +1,9 @@
-#include "TritonAMDGPUToLLVM/Passes.h"
+#include "TritonHCUGPUToLLVM/Passes.h"
 
 #include "AsyncUtility.h"
 #include "PatternTritonGPUOpToLLVM.h"
 #include "TargetInfo.h"
-#include "TritonAMDGPUToLLVM/MembarUtility.h"
+#include "TritonHCUGPUToLLVM/MembarUtility.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
@@ -11,13 +11,13 @@
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
-#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
+#include "mlir/Dialect/HCUGPU/Utils/Chipset.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Pass/Pass.h"
-#include "third_party/amd/include/Analysis/AxisInfoExt.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "third_party/hcu/include/Analysis/AxisInfoExt.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Analysis/Membar.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
@@ -28,8 +28,8 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 
 namespace mlir::triton {
-#define GEN_PASS_DEF_CONVERTTRITONAMDGPUTOLLVM
-#include "TritonAMDGPUToLLVM/Passes.h.inc"
+#define GEN_PASS_DEF_CONVERTTRITONHCUGPUTOLLVM
+#include "TritonHCUGPUToLLVM/Passes.h.inc"
 } // namespace mlir::triton
 
 using namespace mlir;
@@ -65,7 +65,7 @@ public:
     addIllegalDialect<triton::nvidia_gpu::TritonNvidiaGPUDialect>();
     addIllegalDialect<mlir::gpu::GPUDialect>();
     addLegalOp<mlir::UnrealizedConversionCastOp>();
-    addLegalOp<triton::amdgpu::InstructionSchedHint>();
+    addLegalOp<triton::hcugpu::InstructionSchedHint>();
 
     // Warp specialization is lowered later.
     addLegalOp<triton::gpu::WarpSpecializeOp>();
@@ -75,9 +75,9 @@ public:
   }
 };
 
-class TritonAMDGPUToLLVMTypeConverter : public TritonGPUToLLVMTypeConverter {
+class TritonHCUGPUToLLVMTypeConverter : public TritonGPUToLLVMTypeConverter {
 public:
-  TritonAMDGPUToLLVMTypeConverter(MLIRContext *ctx,
+  TritonHCUGPUToLLVMTypeConverter(MLIRContext *ctx,
                                   const LowerToLLVMOptions &options,
                                   const TargetInfoBase &targetInfo,
                                   const DataLayoutAnalysis *analysis = nullptr)
@@ -103,10 +103,10 @@ public:
   }
 };
 
-struct ConvertTritonAMDGPUToLLVM
-    : public triton::impl::ConvertTritonAMDGPUToLLVMBase<
-          ConvertTritonAMDGPUToLLVM> {
-  explicit ConvertTritonAMDGPUToLLVM(StringRef targetArch, bool ftz) {
+struct ConvertTritonHCUGPUToLLVM
+    : public triton::impl::ConvertTritonHCUGPUToLLVMBase<
+          ConvertTritonHCUGPUToLLVM> {
+  explicit ConvertTritonHCUGPUToLLVM(StringRef targetArch, bool ftz) {
     this->arch = targetArch.str();
     this->ftz = ftz;
   }
@@ -114,15 +114,15 @@ struct ConvertTritonAMDGPUToLLVM
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<LLVM::LLVMDialect, NVVM::NVVMDialect, mlir::ROCDL::ROCDLDialect,
-                mlir::triton::amdgpu::TritonAMDGPUDialect>();
+                mlir::triton::hcugpu::TritonHCUGPUDialect>();
   }
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp mod = getOperation();
 
-    AMD::TargetInfo targetInfo(this->arch.getValue());
-    if (targetInfo.getISAFamily() == AMD::ISAFamily::Unknown) {
+    HCU::TargetInfo targetInfo(this->arch.getValue());
+    if (targetInfo.getISAFamily() == HCU::ISAFamily::Unknown) {
       mod.emitError("unsupported target: '") << this->arch.getValue() << "'";
       return signalPassFailure();
     }
@@ -130,7 +130,7 @@ struct ConvertTritonAMDGPUToLLVM
     mlir::LowerToLLVMOptions option(context);
     option.overrideIndexBitwidth(32);
 
-    TritonAMDGPUToLLVMTypeConverter typeConverter(context, option, targetInfo);
+    TritonHCUGPUToLLVMTypeConverter typeConverter(context, option, targetInfo);
     TritonLLVMConversionTarget convTarget(*context);
 
     int numCTAs = triton::gpu::TritonGPUDialect::getNumCTAs(mod);
@@ -140,11 +140,11 @@ struct ConvertTritonAMDGPUToLLVM
     ModuleAllocation allocation(mod);
 
     if (targetInfo.requiresAliasInfoForAsyncOps())
-      AMD::annotateLocalLoadsSyncedViaAsyncWait(mod);
+      HCU::annotateLocalLoadsSyncedViaAsyncWait(mod);
 
-    AMD::addLocalBarrierAfterAmdGpuAsyncWait(mod);
+    HCU::addLocalBarrierAfterAmdGpuAsyncWait(mod);
     ModuleMembarAnalysis membarPass(&allocation,
-                                    mlir::triton::AMD::membarFilter);
+                                    mlir::triton::HCU::membarFilter);
     membarPass.run();
 
     // Lower functions
@@ -174,7 +174,7 @@ struct ConvertTritonAMDGPUToLLVM
         return signalPassFailure();
     }
 
-    AMD::ModuleAxisInfoAnalysis axisInfoAnalysis(mod);
+    HCU::ModuleAxisInfoAnalysis axisInfoAnalysis(mod);
 
     // Emit logics to get threadId/blockIds/linearized clusterCTAId etc. and
     // cache the values. The reason to do it here is that cluster_ctaid is
@@ -185,9 +185,9 @@ struct ConvertTritonAMDGPUToLLVM
 
     RewritePatternSet patterns(context);
     int commonBenefit = patternBenefitPrioritizeOverLLVMConversions;
-    // Make benefit for AMD specific patterns higher so they apply before common
+    // Make benefit for HCU specific patterns higher so they apply before common
     // patterns
-    int AMDBenefit = commonBenefit + 1;
+    int HCUBenefit = commonBenefit + 1;
     auto populatePatterns1 = [&](auto populateFunc, int benefit) {
       populateFunc(typeConverter, patterns, axisInfoAnalysis, allocation,
                    benefit);
@@ -206,23 +206,23 @@ struct ConvertTritonAMDGPUToLLVM
       populateFunc(typeConverter, patterns, targetInfo, benefit);
     };
 
-    AMD::populateConvertLayoutOpToLLVMPatterns(typeConverter, targetInfo,
-                                               patterns, AMDBenefit);
+    HCU::populateConvertLayoutOpToLLVMPatterns(typeConverter, targetInfo,
+                                               patterns, HCUBenefit);
     mlir::triton::populateConvertLayoutOpToLLVMPatterns(
         typeConverter, targetInfo, patterns, commonBenefit);
-    AMD::populateDotOpToLLVMPatterns(typeConverter, patterns, axisInfoAnalysis,
-                                     AMDBenefit);
-    AMD::populateElementwiseOpToLLVMPatterns(typeConverter, patterns, ftz,
+    HCU::populateDotOpToLLVMPatterns(typeConverter, patterns, axisInfoAnalysis,
+                                     HCUBenefit);
+    HCU::populateElementwiseOpToLLVMPatterns(typeConverter, patterns, ftz,
                                              axisInfoAnalysis, allocation,
-                                             targetInfo, AMDBenefit);
-    AMD::populateLoadStoreOpToLLVMPatterns(typeConverter, targetInfo, patterns,
-                                           axisInfoAnalysis, AMDBenefit);
-    AMD::populateMaskedOpsToLLVMPatterns(patterns, targetInfo);
-    AMD::populateBarrierOpToLLVMPatterns(typeConverter, patterns, AMDBenefit);
-    AMD::populateTensorPtrOpsToLLVMPatterns(typeConverter, patterns,
-                                            AMDBenefit);
-    int HCUBenefit = AMDBenefit + 1;
-    AMD::populateMLSOpToLLVMPatterns(typeConverter, targetInfo, patterns,
+                                             targetInfo, HCUBenefit);
+    HCU::populateLoadStoreOpToLLVMPatterns(typeConverter, targetInfo, patterns,
+                                           axisInfoAnalysis, HCUBenefit);
+    HCU::populateMaskedOpsToLLVMPatterns(patterns, targetInfo);
+    HCU::populateBarrierOpToLLVMPatterns(typeConverter, patterns, HCUBenefit);
+    HCU::populateTensorPtrOpsToLLVMPatterns(typeConverter, patterns,
+                                            HCUBenefit);
+    int HCUBenefit = HCUBenefit + 1;
+    HCU::populateMLSOpToLLVMPatterns(typeConverter, targetInfo, patterns,
                                      axisInfoAnalysis, HCUBenefit);
 
     populatePatterns7(mlir::triton::populateReduceOpToLLVMPatterns,
@@ -236,8 +236,8 @@ struct ConvertTritonAMDGPUToLLVM
     populatePatterns7(mlir::triton::populateGatherOpToLLVMPatterns,
                       commonBenefit);
 
-    AMD::populateMemoryOpToLLVMPatterns(typeConverter, patterns, targetInfo,
-                                        AMDBenefit);
+    HCU::populateMemoryOpToLLVMPatterns(typeConverter, patterns, targetInfo,
+                                        HCUBenefit);
     mlir::triton::populateMemoryOpToLLVMPatterns(typeConverter, targetInfo,
                                                  patterns, commonBenefit);
     mlir::triton::populateMakeRangeOpToLLVMPattern(typeConverter, targetInfo,
@@ -248,30 +248,30 @@ struct ConvertTritonAMDGPUToLLVM
                                                      targetInfo, commonBenefit);
     mlir::triton::populateSPMDOpToLLVMPattern(typeConverter, patterns,
                                               targetInfo, commonBenefit);
-    AMD::populateSPMDOpToLLVMPattern(typeConverter, patterns, AMDBenefit);
+    HCU::populateSPMDOpToLLVMPattern(typeConverter, patterns, HCUBenefit);
 
-    mlir::triton::AMD::populateTritonAMDGPUToLLVMPatterns(typeConverter,
-                                                          patterns, AMDBenefit);
-    mlir::triton::AMD::populateUpcastMXFPToLLVMPatterns(typeConverter, patterns,
-                                                        targetInfo, AMDBenefit);
-    mlir::triton::AMD::populateFp4ToFpToLLVMPatterns(typeConverter, patterns,
-                                                     targetInfo, AMDBenefit);
+    mlir::triton::HCU::populateTritonHCUGPUToLLVMPatterns(typeConverter,
+                                                          patterns, HCUBenefit);
+    mlir::triton::HCU::populateUpcastMXFPToLLVMPatterns(typeConverter, patterns,
+                                                        targetInfo, HCUBenefit);
+    mlir::triton::HCU::populateFp4ToFpToLLVMPatterns(typeConverter, patterns,
+                                                     targetInfo, HCUBenefit);
     // TODO(thomas): this should probably be done in a separate step to not
     // interfere with our own lowering of arith ops. Add arith/math's patterns
     // to help convert scalar expression to LLVM.
     mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
     mlir::populateMathToLLVMConversionPatterns(typeConverter, patterns);
 
-    FailureOr<mlir::amdgpu::Chipset> maybeChipset =
-        mlir::amdgpu::Chipset::parse(this->arch);
+    FailureOr<mlir::hcugpu::Chipset> maybeChipset =
+        mlir::hcugpu::Chipset::parse(this->arch);
     if (failed(maybeChipset)) {
       emitError(UnknownLoc::get(&getContext()),
-                "Invalid AMDGPU chipset name: " + this->arch);
+                "Invalid HCUGPU chipset name: " + this->arch);
       return signalPassFailure();
     }
     // Native lowering patterns
     mlir::populateGpuToROCDLConversionPatterns(
-        typeConverter, patterns, mlir::gpu::amd::HIP, *maybeChipset);
+        typeConverter, patterns, mlir::gpu::hcu::HIP, *maybeChipset);
 
     mlir::cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
                                                           patterns);
@@ -283,7 +283,7 @@ struct ConvertTritonAMDGPUToLLVM
       return signalPassFailure();
     }
 
-    AMD::adjustModeRegister(mod, targetInfo);
+    HCU::adjustModeRegister(mod, targetInfo);
     fixUpLoopAnnotation(mod);
   }
 
@@ -313,8 +313,8 @@ private:
 namespace mlir::triton {
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createConvertTritonAMDGPUToLLVMPass(StringRef targetArch, bool ftz) {
-  return std::make_unique<ConvertTritonAMDGPUToLLVM>(targetArch, ftz);
+createConvertTritonHCUGPUToLLVMPass(StringRef targetArch, bool ftz) {
+  return std::make_unique<ConvertTritonHCUGPUToLLVM>(targetArch, ftz);
 }
 
 } // namespace mlir::triton

@@ -50,7 +50,7 @@ struct MakeTensorDescOpConversion
     int numWarps = lookupNumWarps(op);
 
     // Create TDM descriptor for 2D-5D tensors
-    auto tdmDesc = LLVM::AMD::createTDMDescriptor(
+    auto tdmDesc = LLVM::HCU::createTDMDescriptor(
         rewriter, loc, getTypeConverter(), elementType, blockShape, numWarps,
         padInterval, padAmount, tensorShape, tensorStride, basePtr);
 
@@ -65,7 +65,7 @@ struct MakeTensorDescOpConversion
 };
 } // namespace
 
-void mlir::triton::AMD::populateTensorPtrOpsToLLVMPatterns(
+void mlir::triton::HCU::populateTensorPtrOpsToLLVMPatterns(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     PatternBenefit benefit) {
   patterns.add<MakeTensorDescOpConversion>(typeConverter, benefit);

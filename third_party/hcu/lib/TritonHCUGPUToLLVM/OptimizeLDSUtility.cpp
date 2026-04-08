@@ -1,12 +1,12 @@
 #include "OptimizeLDSUtility.h"
-#include "Analysis/AMDGPUAllocation.h"
+#include "Analysis/HCUGPUAllocation.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "llvm/Support/MathExtras.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 static void stepFactorizationPow2(std::vector<SmallVector<unsigned>> &factors,
                                   SmallVector<unsigned> &curFactor,
@@ -36,14 +36,14 @@ triton::gpu::DistributedEncodingTrait
 createTmpLayout(triton::gpu::DistributedEncodingTrait layout,
                 ArrayRef<unsigned> warpsPerCTA) {
   auto ctx = layout.getContext();
-  if (auto src = dyn_cast<triton::gpu::AMDMfmaEncodingAttr>(layout))
-    return triton::gpu::AMDMfmaEncodingAttr::get(
+  if (auto src = dyn_cast<triton::gpu::HCUMfmaEncodingAttr>(layout))
+    return triton::gpu::HCUMfmaEncodingAttr::get(
         ctx, src.getVersion(), warpsPerCTA, src.getInstrShape(),
         src.getIsTransposed(), src.getCTALayout(), src.getTilesPerWarp(),
         src.getElementBitWidth(),
         src.getMmacLayout());
-  if (auto src = dyn_cast<triton::gpu::AMDWmmaEncodingAttr>(layout))
-    return triton::gpu::AMDWmmaEncodingAttr::get(
+  if (auto src = dyn_cast<triton::gpu::HCUWmmaEncodingAttr>(layout))
+    return triton::gpu::HCUWmmaEncodingAttr::get(
         ctx, src.getVersion(), src.getIsTransposed(), warpsPerCTA,
         src.getTilesPerWarp(), src.getCTALayout(), src.getInstrShape());
   if (auto src = dyn_cast<triton::gpu::BlockedEncodingAttr>(layout))
@@ -120,4 +120,4 @@ estimateResourcesForReplacement(OpBuilder builder,
   return res;
 }
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

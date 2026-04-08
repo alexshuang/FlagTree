@@ -1,12 +1,12 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TARGETINFO_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TARGETINFO_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_TARGETINFO_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_TARGETINFO_H_
 
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 #include "triton/Conversion/TritonGPUToLLVM/TargetInfoBase.h"
 #include "llvm/TargetParser/TargetParser.h"
 #include <string>
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 class TargetInfo : public mlir::triton::TargetInfoBase {
 public:
   explicit TargetInfo(std::string arch) : arch(std::move(arch)) {}
@@ -114,6 +114,6 @@ private:
 
   std::string arch;
 };
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TARGETINFO_H_
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_TARGETINFO_H_

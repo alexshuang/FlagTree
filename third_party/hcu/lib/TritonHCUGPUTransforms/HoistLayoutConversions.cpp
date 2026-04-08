@@ -1,4 +1,4 @@
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
@@ -8,8 +8,8 @@ namespace ttg = mlir::triton::gpu;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUHOISTLAYOUTCONVERSIONS
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUHOISTLAYOUTCONVERSIONS
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -39,9 +39,9 @@ static void hoistCvtDotOpOutOfLoop(ttg::ConvertLayoutOp cvtOp) {
 
 } // anonymous namespace
 
-struct TritonAMDGPUHoistLayoutConversionsPass
-    : public impl::TritonAMDGPUHoistLayoutConversionsBase<
-          TritonAMDGPUHoistLayoutConversionsPass> {
+struct TritonHCUGPUHoistLayoutConversionsPass
+    : public impl::TritonHCUGPUHoistLayoutConversionsBase<
+          TritonHCUGPUHoistLayoutConversionsPass> {
 
   void runOnOperation() override {
     tt::FuncOp funcOp = getOperation();

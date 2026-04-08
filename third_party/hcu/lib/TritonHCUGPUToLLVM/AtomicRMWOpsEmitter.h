@@ -1,16 +1,16 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_ATOMICRMWOPSEMITTER_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_ATOMICRMWOPSEMITTER_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_ATOMICRMWOPSEMITTER_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_ATOMICRMWOPSEMITTER_H_
 
 #include "TargetInfo.h"
 
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "triton/Analysis/Utility.h"
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 
 class AtomicRMWEmitter {
 public:
-  AtomicRMWEmitter(const mlir::triton::AMD::TargetInfo &targetInfo,
+  AtomicRMWEmitter(const mlir::triton::HCU::TargetInfo &targetInfo,
                    LLVM::AtomicBinOp binOp, LLVM::AtomicOrdering memOrder,
                    StringRef scopeStr)
       : targetInfo(targetInfo), binOp(binOp), memOrder(memOrder),
@@ -27,7 +27,7 @@ public:
   }
 
 private:
-  const mlir::triton::AMD::TargetInfo &targetInfo;
+  const mlir::triton::HCU::TargetInfo &targetInfo;
 
   mlir::LLVM::AtomicBinOp binOp;
   mlir::LLVM::AtomicOrdering memOrder;
@@ -39,6 +39,6 @@ private:
                               StringRef scope) const;
 };
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_ATOMICRMWEMITTER_H_
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_ATOMICRMWEMITTER_H_

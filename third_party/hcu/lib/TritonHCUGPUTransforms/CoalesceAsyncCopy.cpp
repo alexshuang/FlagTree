@@ -1,15 +1,15 @@
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
-#include "TritonAMDGPUTransforms/Passes.h"
-#include "amd/lib/TritonAMDGPUToLLVM/AsyncUtility.h"
-#include "amd/lib/TritonAMDGPUToLLVM/Utility.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUTransforms/Passes.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/AsyncUtility.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/Utility.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "third_party/amd/include/Analysis/AxisInfoExt.h"
+#include "third_party/hcu/include/Analysis/AxisInfoExt.h"
 #include "triton/Analysis/AxisInfo.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Tools/LayoutUtils.h"
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "tritonamdgpu-coalesce-async-copy"
+#define DEBUG_TYPE "tritonhcugpu-coalesce-async-copy"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
@@ -17,8 +17,8 @@ namespace ttg = triton::gpu;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUCOALESCEASYNCCOPY
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUCOALESCEASYNCCOPY
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -28,7 +28,7 @@ namespace {
 // supported load vector size.
 struct CoalesceAsyncCopyWrites
     : public OpRewritePattern<ttg::AsyncCopyGlobalToLocalOp> {
-  CoalesceAsyncCopyWrites(const triton::AMD::TargetInfo &targetInfo,
+  CoalesceAsyncCopyWrites(const triton::HCU::TargetInfo &targetInfo,
                           const DenseMap<ttg::AsyncCopyGlobalToLocalOp,
                                          unsigned> &asyncCopyContiguity,
                           MLIRContext *ctx)
@@ -101,7 +101,7 @@ struct CoalesceAsyncCopyWrites
 
     ttg::DistributedEncodingTrait newDistEnc;
 
-    if (LLVM::AMD::canCoalesceWriteIntoSharedMemory(
+    if (LLVM::HCU::canCoalesceWriteIntoSharedMemory(
             rewriter, regToSharedLayout, threadsPerWarp, loadContig)) {
       return rewriter.notifyMatchFailure(copyOp, "already writes coalesced");
     }
@@ -222,15 +222,15 @@ struct CoalesceAsyncCopyWrites
   }
 
 private:
-  const triton::AMD::TargetInfo &targetInfo;
+  const triton::HCU::TargetInfo &targetInfo;
   const DenseMap<ttg::AsyncCopyGlobalToLocalOp, unsigned> &asyncCopyContiguity;
 };
 
 } // anonymous namespace
 
-class TritonAMDGPUCoalesceAsyncCopyPass
-    : public impl::TritonAMDGPUCoalesceAsyncCopyBase<
-          TritonAMDGPUCoalesceAsyncCopyPass> {
+class TritonHCUGPUCoalesceAsyncCopyPass
+    : public impl::TritonHCUGPUCoalesceAsyncCopyBase<
+          TritonHCUGPUCoalesceAsyncCopyPass> {
 public:
   using Base::Base;
 
@@ -238,22 +238,22 @@ public:
     ModuleOp m = getOperation();
     MLIRContext *context = &getContext();
 
-    triton::AMD::TargetInfo targetInfo(archGenerationName);
+    triton::HCU::TargetInfo targetInfo(archGenerationName);
 
     mlir::RewritePatternSet patterns(context);
 
-    if (!llvm::is_contained({AMD::ISAFamily::CDNA3, AMD::ISAFamily::CDNA4},
+    if (!llvm::is_contained({HCU::ISAFamily::CDNA3, HCU::ISAFamily::CDNA4},
                             targetInfo.getISAFamily()))
       return; // This pass is CDNA3 and CDNA4 specific.
 
     // Precompute the contiguity of all AsyncCopy ops based on the src and
     // mask contiguity/alignment to avoid rebuilding ModuleAxisInfoAnalysis
     // after every IR change.
-    AMD::ModuleAxisInfoAnalysis axisAnalysis(m);
+    HCU::ModuleAxisInfoAnalysis axisAnalysis(m);
     DenseMap<ttg::AsyncCopyGlobalToLocalOp, unsigned> asyncCopyContiguity;
     m->walk([&](ttg::AsyncCopyGlobalToLocalOp copyOp) {
       unsigned contiguity =
-          mlir::LLVM::AMD::getContiguity(copyOp.getSrc(), axisAnalysis);
+          mlir::LLVM::HCU::getContiguity(copyOp.getSrc(), axisAnalysis);
       if (auto mask = copyOp.getMask()) {
         contiguity =
             std::min<unsigned>(contiguity, axisAnalysis.getMaskAlignment(mask));

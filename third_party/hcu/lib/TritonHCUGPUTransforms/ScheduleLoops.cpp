@@ -1,8 +1,8 @@
-#include "TritonAMDGPUTransforms/Passes.h"
-#include "amd/lib/TritonAMDGPUToLLVM/AsyncUtility.h"
-#include "amd/lib/TritonAMDGPUToLLVM/TargetInfo.h"
-#include "third_party/amd/include/Analysis/AxisInfoExt.h"
-#include "third_party/amd/lib/TritonAMDGPUTransforms/PipelineUtility.h"
+#include "TritonHCUGPUTransforms/Passes.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/AsyncUtility.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/TargetInfo.h"
+#include "third_party/hcu/include/Analysis/AxisInfoExt.h"
+#include "third_party/hcu/lib/TritonHCUGPUTransforms/PipelineUtility.h"
 #include "triton/Analysis/AxisInfo.h"
 #include "triton/Dialect/Triton/IR/OpInterfaces.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
@@ -46,7 +46,7 @@
 //    operations will be scheduled according to various scheduling schemes
 //    outlined in the initSchedule methods in LowerLoops.cpp (see details
 //    there).
-// 4. Finally in TritonAMDGPUPipeline pass, the schedule will be passed to the
+// 4. Finally in TritonHCUGPUPipeline pass, the schedule will be passed to the
 //    PipelineExpander to rewrite accordingly. The new implementation will
 //    consist of: a. Prologue: containing the ramp-up of num_stages-1 stages for
 //       iteratorions i=[0, num_stages-1).
@@ -71,31 +71,31 @@
 // These stages are connected via the schedule serialized in the IR.
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "tritonamdgpu-schedule-loops"
+#define DEBUG_TYPE "tritonhcugpu-schedule-loops"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
 namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
 
-using mlir::triton::AMD::AttrBypassLDS;
+using mlir::triton::HCU::AttrBypassLDS;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUSCHEDULELOOPS
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUSCHEDULELOOPS
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 llvm::MapVector<Operation *, std::pair<int, Operation *>>
-getIndirectLevel(triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis,
+getIndirectLevel(triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                  scf::ForOp &forOp, int numStages) {
   auto arch = getAMDArch(forOp->getParentOfType<ModuleOp>());
-  triton::AMD::ISAFamily isaFamily = triton::AMD::ISAFamily::Unknown;
+  triton::HCU::ISAFamily isaFamily = triton::HCU::ISAFamily::Unknown;
   if (arch)
-    isaFamily = triton::AMD::deduceISAFamily(*arch);
+    isaFamily = triton::HCU::deduceISAFamily(*arch);
 
   bool pipelineWithoutDot = forOp->hasAttr(mlir::triton::kNumStagesAttrName);
   bool filterSmallVectors =
-      isaFamily != triton::AMD::ISAFamily::CDNA4 && !isRDNA(isaFamily);
+      isaFamily != triton::HCU::ISAFamily::CDNA4 && !isRDNA(isaFamily);
   llvm::MapVector<Operation *, std::pair<int, Operation *>> loadOpToIndLevel =
       triton::gpu::loadOpsToIndirectionLevel(forOp, pipelineWithoutDot,
                                              axisInfoAnalysis, numStages,
@@ -358,7 +358,7 @@ void initSymbolicSchedule(int maxDist, Stages &stages, int numStages,
 
 tt::CoarseSchedule
 buildSchedule(scf::ForOp &forOp, int numStages, const LoadToInfoMap &loadToInfo,
-              triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis) {
+              triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis) {
   LDBG("Build SingleDotSchedule");
   tt::CoarseSchedule schedule(numStages);
   Stages stages;
@@ -488,7 +488,7 @@ LogicalResult scheduleOpsBetweenDots(scf::ForOp forOp,
 
 tt::CoarseSchedule
 buildSchedule(scf::ForOp &forOp, int numStages, const LoadToInfoMap &loadToInfo,
-              triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis) {
+              triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis) {
   LDBG("Build ChainedDotSchedule");
   tt::CoarseSchedule schedule(numStages);
   ChainedDotClusters clusters;
@@ -524,7 +524,7 @@ buildSchedule(scf::ForOp &forOp, int numStages, const LoadToInfoMap &loadToInfo,
 } // namespace ChainedDotSchedule
 
 void pipelineLoop(scf::ForOp forOp, int numStages) {
-  triton::AMD::ModuleAxisInfoAnalysis axisInfoAnalysis(
+  triton::HCU::ModuleAxisInfoAnalysis axisInfoAnalysis(
       forOp->getParentOfType<ModuleOp>());
 
   llvm::MapVector<Operation *, std::pair<int, Operation *>> loadOpToIndLevel =
@@ -574,7 +574,7 @@ void pipelineLoop(scf::ForOp forOp, int numStages) {
 }
 } // namespace
 
-struct ScheduleLoops : impl::TritonAMDGPUScheduleLoopsBase<ScheduleLoops> {
+struct ScheduleLoops : impl::TritonHCUGPUScheduleLoopsBase<ScheduleLoops> {
   using Base::Base;
 
   void runOnOperation() override {

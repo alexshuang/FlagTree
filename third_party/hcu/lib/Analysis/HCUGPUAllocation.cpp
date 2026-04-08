@@ -1,12 +1,12 @@
-#include "Analysis/AMDGPUAllocation.h"
+#include "Analysis/HCUGPUAllocation.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
-#include "third_party/amd/include/Dialect/TritonAMDGPU/Utility/CommonUtils.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/Utility/CommonUtils.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 // Max shmem instruction in bits
 constexpr int kMaxShmemVecBitLength = 128;
@@ -35,8 +35,8 @@ SmallVector<unsigned> getRepShapeForCvt(RankedTensorType srcTy,
 
   auto srcShapePerCTA = gpu::getShapePerCTA(srcTy);
   auto dstShapePerCTA = gpu::getShapePerCTA(dstTy);
-  auto srcShapePerCTATile = ::mlir::triton::AMD::getShapePerCTATile(srcTy);
-  auto dstShapePerCTATile = ::mlir::triton::AMD::getShapePerCTATile(dstTy);
+  auto srcShapePerCTATile = ::mlir::triton::HCU::getShapePerCTATile(srcTy);
+  auto dstShapePerCTATile = ::mlir::triton::HCU::getShapePerCTATile(dstTy);
 
   assert(srcTy.getRank() == dstTy.getRank() &&
          "src and dst must have the same rank");
@@ -130,7 +130,7 @@ unsigned getConvertLayoutScratchInBytes(RankedTensorType srcTy,
   return elems * getBitwidth(srcTy) / 8;
 }
 
-unsigned AMDAllocationAnalysisScratchSizeFn(Operation *op) {
+unsigned HCUAllocationAnalysisScratchSizeFn(Operation *op) {
 
   if (auto cvtLayout = dyn_cast<mlir::triton::gpu::ConvertLayoutOp>(op)) {
     auto srcTy = cvtLayout.getSrc().getType();
@@ -142,4 +142,4 @@ unsigned AMDAllocationAnalysisScratchSizeFn(Operation *op) {
   return defaultAllocationAnalysisScratchSizeFn(op);
 }
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

@@ -20,17 +20,17 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#include "Analysis/AMDGPUAllocation.h"
+#include "Analysis/HCUGPUAllocation.h"
 #include "OptimizeLDSUtility.h"
 #include "TargetInfo.h"
-#include "TritonAMDGPUToLLVM/Passes.h"
+#include "TritonHCUGPUToLLVM/Passes.h"
 #include "mlir/Analysis/Liveness.h"
 #include "mlir/Pass/Pass.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
-#define DEBUG_TYPE "optimize-amd-lds-usage"
+#define DEBUG_TYPE "optimize-hcu-lds-usage"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
@@ -38,7 +38,7 @@ using namespace mlir;
 
 namespace mlir::triton {
 #define GEN_PASS_DEF_OPTIMIZEAMDLDSUSAGE
-#include "TritonAMDGPUToLLVM/Passes.h.inc"
+#include "TritonHCUGPUToLLVM/Passes.h.inc"
 } // namespace mlir::triton
 
 namespace {
@@ -113,7 +113,7 @@ class OptimizeAMDLDSUsage
     // decomposition use LDS less than LDSLimit and for which sum of LDS usage
     // is minimal. If no such shape exists, do not decompose.
     auto factorizedNumWarps =
-        mlir::triton::AMD::factorizePowerOf2(numWarps, rank);
+        mlir::triton::HCU::factorizePowerOf2(numWarps, rank);
     // Create a list of temporary layouts
     SmallVector<unsigned> elemsPerThread(rank, 1);
     SmallVector<unsigned> threadsPerWarp(rank, 1);
@@ -143,10 +143,10 @@ class OptimizeAMDLDSUsage
           tmpLayouts.push_back(enc);
       };
 
-      pushNotNull(mlir::triton::AMD::createTmpLayout(srcEnc, warpsPerCTA));
-      pushNotNull(mlir::triton::AMD::createTmpLayout(dstEnc, warpsPerCTA));
+      pushNotNull(mlir::triton::HCU::createTmpLayout(srcEnc, warpsPerCTA));
+      pushNotNull(mlir::triton::HCU::createTmpLayout(dstEnc, warpsPerCTA));
       pushNotNull(
-          mlir::triton::AMD::createTmpLayout(baseFallbackLayout, warpsPerCTA));
+          mlir::triton::HCU::createTmpLayout(baseFallbackLayout, warpsPerCTA));
     }
 
     unsigned minLDSUsage = 2 * LDSLimit;
@@ -154,7 +154,7 @@ class OptimizeAMDLDSUsage
     bool currentBestHasPadding = true;
 
     for (int i = 0; i < tmpLayouts.size(); i++) {
-      auto resources = mlir::triton::AMD::estimateResourcesForReplacement(
+      auto resources = mlir::triton::HCU::estimateResourcesForReplacement(
           builder, cvtOp, tmpLayouts[i]);
 
       // Select between padded and swizzled variants of the same tmpLayout
@@ -184,21 +184,21 @@ class OptimizeAMDLDSUsage
     }
     assert(minIdx >= 0 && minIdx < tmpLayouts.size());
 
-    bool hasAttr = cvtOp->hasAttr(triton::AMD::AttrSharedMemPadded);
+    bool hasAttr = cvtOp->hasAttr(triton::HCU::AttrSharedMemPadded);
     if (currentBestHasPadding && !hasAttr) {
-      cvtOp->setAttr(triton::AMD::AttrSharedMemPadded, UnitAttr::get(ctx));
+      cvtOp->setAttr(triton::HCU::AttrSharedMemPadded, UnitAttr::get(ctx));
       // if padded layout drops LDS usage on itself, we are done, return
-      if (triton::AMD::getConvertLayoutScratchInBytes(
+      if (triton::HCU::getConvertLayoutScratchInBytes(
               srcType, dstType, /*usePadding*/ true) <= targetLDSSize) {
         return;
       }
     } else if (!currentBestHasPadding && hasAttr) {
-      cvtOp->removeAttr(triton::AMD::AttrSharedMemPadded);
+      cvtOp->removeAttr(triton::HCU::AttrSharedMemPadded);
     }
 
     auto tmpLayout = tmpLayouts[minIdx];
     auto replacementCvts =
-        mlir::triton::AMD::createNewConvertOps(builder, cvtOp, tmpLayout);
+        mlir::triton::HCU::createNewConvertOps(builder, cvtOp, tmpLayout);
 
     cvtOp.replaceAllUsesWith(replacementCvts.second.getResult());
     cvtOp.erase();
@@ -268,12 +268,12 @@ public:
             << this->getName().str();
         return signalPassFailure();
       }
-      triton::AMD::TargetInfo targetInfo(this->targetArch.c_str());
+      triton::HCU::TargetInfo targetInfo(this->targetArch.c_str());
       LDSLimit = targetInfo.getSharedMemorySize();
     }
 
     ModuleAllocation allocAnalysis(
-        mod, mlir::triton::AMD::AMDAllocationAnalysisScratchSizeFn);
+        mod, mlir::triton::HCU::HCUAllocationAnalysisScratchSizeFn);
     if (allocAnalysis.getSharedMemorySize() <= LDSLimit)
       return;
 
@@ -290,11 +290,11 @@ public:
 
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 std::unique_ptr<OperationPass<ModuleOp>>
 createOptimizeLDSUsagePass(StringRef targetArch, int customLDSLimit) {
   return std::make_unique<OptimizeAMDLDSUsage>(targetArch, customLDSLimit);
 }
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

@@ -22,16 +22,16 @@
  */
 
 #include "../PatternTritonGPUOpToLLVM.h"
-#include "TritonAMDGPUTransforms/WmmaGroup.h"
+#include "TritonHCUGPUTransforms/WmmaGroup.h"
 #include "Utility.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "llvm/ADT/TypeSwitch.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 namespace {
 
-using ::mlir::triton::gpu::AMDWmmaEncodingAttr;
+using ::mlir::triton::gpu::HCUWmmaEncodingAttr;
 using ::mlir::triton::gpu::DotOperandEncodingAttr;
 using ::mlir::triton::gpu::LinearEncodingAttr;
 
@@ -172,7 +172,7 @@ Value generateScaledWMMAIntrinsic(ConversionPatternRewriter &rewriter,
   LLVM::FastmathFlagsAttr defaultFlags{};
   SmallVector<Value> operands;
 
-  // Reference: llvm/include/llvm/IR/IntrinsicsAMDGPU.td,
+  // Reference: llvm/include/llvm/IR/IntrinsicsHCUGPU.td,
   // int_amdgcn_wmma_scale_f32_16x16x128_f8f6f4
   Value fmtA = b.i32_val(getWmmaF8F6F4MatrixFormat(aElType));
   operands.push_back(fmtA);
@@ -218,7 +218,7 @@ Value generateWMMAOp(ConversionPatternRewriter &rewriter, Location loc,
 LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor,
                          ConversionPatternRewriter &rewriter,
                          const LLVMTypeConverter *typeConverter) {
-  auto wmmaLayout = cast<AMDWmmaEncodingAttr>(
+  auto wmmaLayout = cast<HCUWmmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
   int wmmaVer = wmmaLayout.getVersion();
   auto warpsPerCTA = wmmaLayout.getWarpsPerCTA();
@@ -362,7 +362,7 @@ LogicalResult convertScaledDot(triton::DotScaledOp op,
                                triton::DotScaledOp::Adaptor adaptor,
                                ConversionPatternRewriter &rewriter,
                                const LLVMTypeConverter *typeConverter) {
-  auto wmmaLayout = cast<AMDWmmaEncodingAttr>(
+  auto wmmaLayout = cast<HCUWmmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
   int wmmaVer = wmmaLayout.getVersion();
   assert(wmmaVer == 3 && "Scaled dot not supported for wmma1/wmma2");
@@ -445,9 +445,9 @@ LogicalResult convertScaledDot(triton::DotScaledOp op,
   auto fc = unpackLLElements(loc, loadedC, rewriter);
 
   Type scaledAElemType =
-      LLVM::AMD::scaleDotElemTypeToMLIRType(op.getContext(), op.getAElemType());
+      LLVM::HCU::scaleDotElemTypeToMLIRType(op.getContext(), op.getAElemType());
   Type scaledBElemType =
-      LLVM::AMD::scaleDotElemTypeToMLIRType(op.getContext(), op.getBElemType());
+      LLVM::HCU::scaleDotElemTypeToMLIRType(op.getContext(), op.getBElemType());
 
   unsigned warpSize = gpu::lookupThreadsPerWarp(rewriter);
   // compute number of output elements that each thread holds for one WMMA
@@ -516,7 +516,7 @@ LogicalResult convertWMMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
 
   auto cTensorTy = rankedTType(op.getC());
   auto dTensorTy = rankedTType(op.getD());
-  assert(isa<AMDWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
+  assert(isa<HCUWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
          "Currently, we only support $c with a wmma layout.");
 
   assert(cTensorTy.getShape()[0] == dTensorTy.getShape()[0] &&
@@ -536,7 +536,7 @@ LogicalResult convertScaledWMMA(triton::DotScaledOp op,
 
   auto cTensorTy = op.getC().getType();
   auto dTensorTy = op.getD().getType();
-  assert(isa<AMDWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
+  assert(isa<HCUWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
          "Currently, we only support C with a wmma layout.");
 
   assert(cTensorTy.getShape()[0] == dTensorTy.getShape()[0] &&
@@ -544,8 +544,8 @@ LogicalResult convertScaledWMMA(triton::DotScaledOp op,
          "DotOp's C operand should pass the same number of values as D.");
 
   auto loc = op.getLoc();
-  auto wmmaLayout = cast<AMDWmmaEncodingAttr>(
+  auto wmmaLayout = cast<HCUWmmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
   return convertScaledDot(op, adaptor, rewriter, typeConverter);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

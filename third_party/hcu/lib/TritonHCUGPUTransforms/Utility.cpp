@@ -189,7 +189,7 @@ ttg::PaddedSharedEncodingAttr composePaddedLayoutForAsyncCopyCDNA4(
     return {};
   }
 
-  auto mfmaEnc = dyn_cast<ttg::AMDMfmaEncodingAttr>(dotOpEnc.getParent());
+  auto mfmaEnc = dyn_cast<ttg::HCUMfmaEncodingAttr>(dotOpEnc.getParent());
   if (!mfmaEnc) {
     return {};
   }
@@ -345,12 +345,12 @@ ttg::PaddedSharedEncodingAttr composePaddedLayoutForAsyncCopyCDNA4(
 }
 
 ttg::PaddedSharedEncodingAttr
-composePaddedLayout(const tt::AMD::TargetInfo &targetInfo,
+composePaddedLayout(const tt::HCU::TargetInfo &targetInfo,
                     ttg::DotOperandEncodingAttr dotOpEnc,
                     ttg::TensorOrMemDesc srcTy, ArrayRef<unsigned> sharedOrder,
                     bool useAsyncCopy) {
   if (useAsyncCopy &&
-      targetInfo.getISAFamily() == triton::AMD::ISAFamily::CDNA4) {
+      targetInfo.getISAFamily() == triton::HCU::ISAFamily::CDNA4) {
     return composePaddedLayoutForAsyncCopyCDNA4(dotOpEnc, srcTy, sharedOrder,
                                                 useAsyncCopy);
   }

@@ -1,5 +1,5 @@
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
@@ -14,14 +14,14 @@
 #include "triton/Tools/LinearLayout.h"
 #include <memory>
 
-#define DEBUG_TYPE "tritonamdgpu-optimize-dot-operands"
+#define DEBUG_TYPE "tritonhcugpu-optimize-dot-operands"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
 namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
 
-namespace mlir::triton::amdgpu {
+namespace mlir::triton::hcugpu {
 
 namespace {
 
@@ -31,22 +31,22 @@ namespace {
 // according to the need.
 //
 // It matches
-// tt.load -> ... -> amdg.scaled_upcast_x
+// tt.load -> ... -> hcug.scaled_upcast_x
 //
 // And rewrites it to
-// tt.load -> ttg.local_alloc -> ttg.local_load -> ... -> amdg.scaled_upcast_x
+// tt.load -> ttg.local_alloc -> ttg.local_load -> ... -> hcug.scaled_upcast_x
 template <typename OpTy>
 class AllocSharedMemForUpcastedScales : public OpRewritePattern<OpTy> {
 public:
   using OpRewritePattern<OpTy>::OpRewritePattern;
 
   AllocSharedMemForUpcastedScales(MLIRContext *context,
-                                  triton::AMD::ISAFamily isaFamily)
+                                  triton::HCU::ISAFamily isaFamily)
       : OpRewritePattern<OpTy>(context), isaFamily(isaFamily) {}
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    if (isaFamily != mlir::triton::AMD::ISAFamily::CDNA4)
+    if (isaFamily != mlir::triton::HCU::ISAFamily::CDNA4)
       return rewriter.notifyMatchFailure(op, "NYI: Only supported on CDNA4");
 
     auto forOp = op->template getParentOfType<scf::ForOp>();
@@ -105,16 +105,16 @@ public:
   }
 
 private:
-  triton::AMD::ISAFamily isaFamily;
+  triton::HCU::ISAFamily isaFamily;
 };
 } // namespace
 
-#define GEN_PASS_DEF_TRITONAMDGPUOPTIMIZEDOTOPERANDS
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUOPTIMIZEDOTOPERANDS
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
-class TritonAMDGPUOptimizeDotOperands
-    : public impl::TritonAMDGPUOptimizeDotOperandsBase<
-          TritonAMDGPUOptimizeDotOperands> {
+class TritonHCUGPUOptimizeDotOperands
+    : public impl::TritonHCUGPUOptimizeDotOperandsBase<
+          TritonHCUGPUOptimizeDotOperands> {
 public:
   using Base::Base;
 
@@ -123,10 +123,10 @@ public:
     ModuleOp m = getOperation();
 
     mlir::RewritePatternSet patterns(context);
-    auto isaFamily = triton::AMD::deduceISAFamily(archGenerationName);
+    auto isaFamily = triton::HCU::deduceISAFamily(archGenerationName);
     patterns
-        .add<AllocSharedMemForUpcastedScales<tt::amdgpu::ScaledUpcastFp8Op>,
-             AllocSharedMemForUpcastedScales<tt::amdgpu::ScaledUpcastFp4Op>>(
+        .add<AllocSharedMemForUpcastedScales<tt::hcugpu::ScaledUpcastFp8Op>,
+             AllocSharedMemForUpcastedScales<tt::hcugpu::ScaledUpcastFp4Op>>(
             context, isaFamily);
     ttg::ConvertLayoutOp::getCanonicalizationPatterns(patterns, context);
     if (failed(applyPatternsGreedily(m, std::move(patterns))))
@@ -134,10 +134,10 @@ public:
   }
 };
 
-void registerTritonAMDGPUOptimizeDotOperands() {
+void registerTritonHCUGPUOptimizeDotOperands() {
   ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
-    return createTritonAMDGPUOptimizeDotOperands();
+    return createTritonHCUGPUOptimizeDotOperands();
   });
 }
 
-} // namespace mlir::triton::amdgpu
+} // namespace mlir::triton::hcugpu

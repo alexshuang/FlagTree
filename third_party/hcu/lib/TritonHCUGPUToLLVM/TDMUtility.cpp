@@ -2,7 +2,7 @@
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include <optional>
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 namespace {
 
 // Helper to encode a 48-bit value: 32 bits in first word, 16 bits in second
@@ -550,4 +550,4 @@ void emitTDMOperation(RewriterBase &rewriter, Location loc,
   }
 }
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU

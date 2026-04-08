@@ -1,4 +1,4 @@
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -8,10 +8,10 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "third_party/amd/include/Analysis/AxisInfoExt.h"
-#include "third_party/amd/include/Analysis/RangeAnalysis.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
-#include "third_party/amd/lib/TritonAMDGPUToLLVM/Utility.h"
+#include "third_party/hcu/include/Analysis/AxisInfoExt.h"
+#include "third_party/hcu/include/Analysis/RangeAnalysis.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h"
+#include "third_party/hcu/lib/TritonHCUGPUToLLVM/Utility.h"
 #include "triton/Analysis/AxisInfo.h"
 #include "triton/Analysis/Utility.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -21,20 +21,20 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "tritonamdgpu-convert-buffer-ops"
+#define DEBUG_TYPE "tritonhcugpu-convert-buffer-ops"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
-using ::mlir::LLVM::AMD::getVectorSize;
-using mlir::triton::AMD::ISAFamily;
+using ::mlir::LLVM::HCU::getVectorSize;
+using mlir::triton::HCU::ISAFamily;
 
 namespace ttg = mlir::triton::gpu;
 namespace tt = mlir::triton;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUCONVERTTOBUFFEROPS
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUCONVERTTOBUFFEROPS
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -148,7 +148,7 @@ bool isByteOffsetSmallerThan2GB(triton::AddPtrOp addPtrOp,
   }
 
   const mlir::IntegerValueRange &vr = lattice->getValue();
-  if (vr.isUninitialized() || AMD::isEmptyInitializedRange(vr.getValue())) {
+  if (vr.isUninitialized() || HCU::isEmptyInitializedRange(vr.getValue())) {
     LDBG("Cannot get value range of the offset");
     return false;
   };
@@ -353,7 +353,7 @@ struct ConvertTritonAtomicCASOpToBufferAtomicCAS
           op, "BufferAtomicCAS requires opBitWidth >= 32");
     }
     Value blockStride = getBlockStride(op->getLoc(), tensorOffset, rewriter);
-    rewriter.replaceOpWithNewOp<triton::amdgpu::BufferAtomicCASOp>(
+    rewriter.replaceOpWithNewOp<triton::hcugpu::BufferAtomicCASOp>(
         op, op.getVal().getType(), basePtr, tensorOffset, op.getCmp(),
         op.getVal(), blockStride, sem, scope);
     return success();
@@ -504,7 +504,7 @@ struct ConvertTritonAtomicRMWOpToBufferAtomicRMW
     if (op.getMask() && !isSplatOneConstTensor(op.getMask()))
       maybeMask = op.getMask();
     Value blockStride = getBlockStride(op->getLoc(), tensorOffset, rewriter);
-    rewriter.replaceOpWithNewOp<triton::amdgpu::BufferAtomicRMWOp>(
+    rewriter.replaceOpWithNewOp<triton::hcugpu::BufferAtomicRMWOp>(
         op, op.getVal().getType(), atomicRmwOp, basePtr, tensorOffset,
         op.getVal(), blockStride, sem, scope, maybeMask);
 
@@ -563,13 +563,13 @@ struct ConvertTritonLoadToBufferLoad : public mlir::OpRewritePattern<SourceOp> {
 
       auto bufferLoadOp = [&]() {
         if constexpr (std::is_same_v<SourceOp, triton::LoadOp>) {
-          return triton::amdgpu::BufferLoadOp::create(
+          return triton::hcugpu::BufferLoadOp::create(
               rewriter, op->getLoc(), op.getType(), basePtr, tensorOffset,
               blockStride, op.getCache(), maybeMask, maybeOther);
         } else if constexpr (std::is_same_v<
                                  SourceOp,
                                  triton::gpu::AsyncCopyGlobalToLocalOp>) {
-          return triton::amdgpu::BufferLoadToLocalOp::create(
+          return triton::hcugpu::BufferLoadToLocalOp::create(
               rewriter, op->getLoc(), op.getType(), op.getResult(), basePtr,
               tensorOffset, maybeMask, maybeOther, blockStride, op.getCache(),
               op.getContiguity());
@@ -647,7 +647,7 @@ struct ConvertTritonStoreToBufferStore
       if (op.getMask() && !isSplatOneConstTensor(op.getMask()))
         maybeMask = op.getMask();
       Value blockStride = getBlockStride(op->getLoc(), tensorOffset, rewriter);
-      rewriter.replaceOpWithNewOp<triton::amdgpu::BufferStoreOp>(
+      rewriter.replaceOpWithNewOp<triton::hcugpu::BufferStoreOp>(
           op, op.getValue(), basePtr, tensorOffset, blockStride, op.getCache(),
           maybeMask);
       return success();
@@ -665,9 +665,9 @@ private:
 
 } // anonymous namespace
 
-struct TritonAMDGPUConvertToBufferOpsPass
-    : impl::TritonAMDGPUConvertToBufferOpsBase<
-          TritonAMDGPUConvertToBufferOpsPass> {
+struct TritonHCUGPUConvertToBufferOpsPass
+    : impl::TritonHCUGPUConvertToBufferOpsBase<
+          TritonHCUGPUConvertToBufferOpsPass> {
   using Base::Base;
 
   void runOnOperation() override {
@@ -675,22 +675,22 @@ struct TritonAMDGPUConvertToBufferOpsPass
     RewritePatternSet patterns(context);
     ModuleOp mod = getOperation();
     auto arch = getAMDArch(mod);
-    triton::AMD::TargetInfo targetInfo(arch ? arch->str() : "");
+    triton::HCU::TargetInfo targetInfo(arch ? arch->str() : "");
 
     // Collect assumptions in the function
     DenseMap<Value, SetVector<Operation *>> assumptions =
-        AMD::TritonIntegerRangeAnalysis::collectAssumptions(getOperation());
+        HCU::TritonIntegerRangeAnalysis::collectAssumptions(getOperation());
     collectAssumptionsForFuncArgPtr(mod, assumptions);
     std::shared_ptr<DataFlowSolver> solver = createDataFlowSolver();
 
-    AMD::TritonIntegerRangeAnalysis *rangeAnalysis =
-        solver->load<AMD::TritonIntegerRangeAnalysis>(
+    HCU::TritonIntegerRangeAnalysis *rangeAnalysis =
+        solver->load<HCU::TritonIntegerRangeAnalysis>(
             assumptions, &getAnalysis<DominanceInfo>());
-    AMD::initializeFuncOps(mod, rangeAnalysis);
+    HCU::initializeFuncOps(mod, rangeAnalysis);
     if (failed(solver->initializeAndRun(getOperation())))
       return signalPassFailure();
 
-    AMD::ModuleAxisInfoAnalysis axisInfoAnalysis(mod);
+    HCU::ModuleAxisInfoAnalysis axisInfoAnalysis(mod);
     patterns.add<ConvertTritonLoadToBufferLoad<tt::LoadOp>,
                  ConvertTritonStoreToBufferStore>(context, assumptions, solver,
                                                   this->analyzeSmallTensorOfst);
@@ -705,8 +705,8 @@ struct TritonAMDGPUConvertToBufferOpsPass
     // Gate buffer atomics behind CDNA3 for now
     // GFX942-specific assumptions regarding cache coherence are made when
     // lowering to LLVM
-    triton::AMD::ISAFamily isaFamily =
-        triton::AMD::deduceISAFamily(archGenerationName);
+    triton::HCU::ISAFamily isaFamily =
+        triton::HCU::deduceISAFamily(archGenerationName);
     if (this->allowBufferAtomics &&
         (ISAFamily::CDNA3 == isaFamily || ISAFamily::CDNA4 == isaFamily))
       patterns.add<ConvertTritonAtomicRMWOpToBufferAtomicRMW>(

@@ -1,7 +1,7 @@
 #include "AsyncUtility.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "PatternTritonGPUOpToLLVM.h"
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
@@ -17,7 +17,7 @@ class TransLocalLoadOpConversion
     : public ConvertOpToLLVMPattern<triton::gpu::LocalLoadOp> {
 public:
   TransLocalLoadOpConversion(const LLVMTypeConverter &converter,
-                             const AMD::TargetInfo &targetInfo,
+                             const HCU::TargetInfo &targetInfo,
                              PatternBenefit benefit = 2)
       : ConvertOpToLLVMPattern<triton::gpu::LocalLoadOp>(converter, benefit),
         targetInfo(targetInfo) {}
@@ -97,13 +97,13 @@ public:
 private:
   LogicalResult lowerDsReadTr(
       triton::gpu::LocalLoadOp op,
-      ::triton::AMD::TargetInfo::LDSTransLoadParams ldsParams, Location loc,
+      ::triton::HCU::TargetInfo::LDSTransLoadParams ldsParams, Location loc,
       LinearLayout cvt,
       SmallVector<Value> &vals, // Input for stmatrix, output for ldmatrix
       Value smemBase, Value affineOffset, uint64_t maskSpanAffineOffset,
       std::function<Value(Value)> calcPaddedOffset, Type llvmElemTy,
       ConversionPatternRewriter &rewriter,
-      const ::triton::AMD::TargetInfo &targetInfo) const {
+      const ::triton::HCU::TargetInfo &targetInfo) const {
 
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto *ctx = rewriter.getContext();
@@ -152,11 +152,11 @@ private:
     const auto isaFamily = targetInfo.getISAFamily();
     // B8 types on gfx1250 require a different tile with double the contiguity
     bool doubleB8Contiguity =
-        isaFamily == AMD::ISAFamily::GFX1250 && bitWidth == 8;
+        isaFamily == HCU::ISAFamily::GFX1250 && bitWidth == 8;
     const unsigned missingLanes =
         targetInfo.getWarpSize() / tile.getInDimSize(kLane);
     unsigned otherLanes = 1;
-    if (isaFamily == AMD::ISAFamily::CDNA4) {
+    if (isaFamily == HCU::ISAFamily::CDNA4) {
       otherLanes = (bitWidth == 8) ? 2 : 4;
     } else if (doubleB8Contiguity) {
       otherLanes = 2;
@@ -244,7 +244,7 @@ private:
       auto numElemsI32 = (vTy.getNumElements() * bitWidth / 32);
       auto vTyI32 = VectorType::get(numElemsI32, i32_ty);
       switch (targetInfo.getISAFamily()) {
-      case AMD::ISAFamily::GFX1250: {
+      case HCU::ISAFamily::GFX1250: {
         if (bitWidth == 16) {
           dsReadTr = LLVM::createLLVMIntrinsicCallOp(
                          rewriter, loc, "llvm.amdgcn.ds.load.tr16.b128", {vTy},
@@ -257,7 +257,7 @@ private:
                          .getResult(0);
         break;
       }
-      case AMD::ISAFamily::CDNA4: {
+      case HCU::ISAFamily::CDNA4: {
         if (bitWidth == 16) {
           dsReadTr =
               ROCDL::ds_read_tr16_b64::create(rewriter, loc, vTy, vecAddr);
@@ -272,8 +272,8 @@ private:
       }
       // GFX1250 is currently using LLVM intrinsics so it cannot cast it to
       // AliasAnalysisOpInterface
-      if (targetInfo.getISAFamily() != AMD::ISAFamily::GFX1250)
-        AMD::addLocalLoadNoAliasScope(
+      if (targetInfo.getISAFamily() != HCU::ISAFamily::GFX1250)
+        HCU::addLocalLoadNoAliasScope(
             op, cast<LLVM::AliasAnalysisOpInterface>(dsReadTr.getDefiningOp()));
       Value vecVal = b.bitcast(dsReadTr, vTy);
       SmallVector<Value> loadedVals;
@@ -314,24 +314,24 @@ private:
   }
 
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 };
 
 class LocalLoadPackedTransposedOpConversion
     : public ConvertOpToLLVMPattern<
-          triton::amdgpu::LocalLoadPackedTransposedOp> {
+          triton::hcugpu::LocalLoadPackedTransposedOp> {
 public:
   LocalLoadPackedTransposedOpConversion(const LLVMTypeConverter &converter,
-                                        const AMD::TargetInfo &targetInfo,
+                                        const HCU::TargetInfo &targetInfo,
                                         PatternBenefit benefit = 2)
-      : ConvertOpToLLVMPattern<triton::amdgpu::LocalLoadPackedTransposedOp>(
+      : ConvertOpToLLVMPattern<triton::hcugpu::LocalLoadPackedTransposedOp>(
             converter, benefit),
         targetInfo(targetInfo) {}
   using OpAdaptor =
-      typename triton::amdgpu::LocalLoadPackedTransposedOp::Adaptor;
+      typename triton::hcugpu::LocalLoadPackedTransposedOp::Adaptor;
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::LocalLoadPackedTransposedOp op,
+  matchAndRewrite(triton::hcugpu::LocalLoadPackedTransposedOp op,
                   OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     MemDescType srcTy = op.getSrc().getType();
@@ -345,7 +345,7 @@ public:
       return failure();
     }
     // FP4 packed along M/N are not supported yet on GFX1250
-    if (targetInfo.getISAFamily() == AMD::ISAFamily::GFX1250) {
+    if (targetInfo.getISAFamily() == HCU::ISAFamily::GFX1250) {
       return failure();
     }
 
@@ -354,7 +354,7 @@ public:
 
 private:
   LogicalResult
-  lowerSharedToDotOperandTransLL(triton::amdgpu::LocalLoadPackedTransposedOp op,
+  lowerSharedToDotOperandTransLL(triton::hcugpu::LocalLoadPackedTransposedOp op,
                                  OpAdaptor adaptor,
                                  const LLVMTypeConverter *typeConverter,
                                  ConversionPatternRewriter &rewriter) const {
@@ -456,14 +456,14 @@ private:
   }
 
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 };
 
 class LocalBarrierOpConversion
     : public ConvertOpToLLVMPattern<triton::gpu::LocalBarrierOp> {
 public:
   LocalBarrierOpConversion(const LLVMTypeConverter &converter,
-                           const AMD::TargetInfo &targetInfo,
+                           const HCU::TargetInfo &targetInfo,
                            PatternBenefit benefit)
       : ConvertOpToLLVMPattern<triton::gpu::LocalBarrierOp>(converter, benefit),
         targetInfo(targetInfo) {}
@@ -478,10 +478,10 @@ public:
     // - s_waitcnt specifies how many operations to VMEM/LDS can be outstanding
     //   when the instruction completes.
     //   In this case we require 0 outstanding LDS operations
-    //   amdgpu::MemoryCounterWaitOp will lower s_waitcnt
+    //   hcugpu::MemoryCounterWaitOp will lower s_waitcnt
     // - s_barrier syncronizes the execution for the CTA
     auto dsAttr = rewriter.getI32IntegerAttr(0);
-    rewriter.create<amdgpu::MemoryCounterWaitOp>(
+    rewriter.create<hcugpu::MemoryCounterWaitOp>(
         op->getLoc(), /* load= */ nullptr, /* store= */ nullptr,
         /* ds= */ dsAttr);
     rewriter.replaceOpWithNewOp<ROCDL::SBarrierOp>(op);
@@ -490,13 +490,13 @@ public:
   }
 
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 };
 
-/// Encodes the waitcnt value for AMDGPU architectures.
+/// Encodes the waitcnt value for HCUGPU architectures.
 ///
-/// Note: This function duplicates the bitpacking logic from AMDGPU backend
-/// (llvm/lib/Target/AMDGPU/Utils/AMDGPUBaseInfo.h), as it's not accessible from
+/// Note: This function duplicates the bitpacking logic from HCUGPU backend
+/// (llvm/lib/Target/HCUGPU/Utils/HCUGPUBaseInfo.h), as it's not accessible from
 /// llvm/include. The logic handles different encoding schemes across
 /// various GPU architecture versions (pre-gfx9 to gfx11).
 ///
@@ -547,14 +547,14 @@ static FailureOr<unsigned> encodeWaitcnt(llvm::AMDGPU::IsaVersion isaVersion,
 }
 
 struct MemoryCounterWaitOpConversion
-    : public ConvertOpToLLVMPattern<amdgpu::MemoryCounterWaitOp> {
+    : public ConvertOpToLLVMPattern<hcugpu::MemoryCounterWaitOp> {
   MemoryCounterWaitOpConversion(const LLVMTypeConverter &converter,
-                                const AMD::TargetInfo &targetInfo,
+                                const HCU::TargetInfo &targetInfo,
                                 PatternBenefit benefit)
       : ConvertOpToLLVMPattern(converter, benefit), targetInfo(targetInfo) {}
 
   LogicalResult
-  matchAndRewrite(amdgpu::MemoryCounterWaitOp op, OpAdaptor adaptor,
+  matchAndRewrite(hcugpu::MemoryCounterWaitOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto isaVersion = targetInfo.getIsaVersion();
 
@@ -607,12 +607,12 @@ struct MemoryCounterWaitOpConversion
   }
 
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 };
 
 } // namespace
 
-void mlir::triton::AMD::populateMemoryOpToLLVMPatterns(
+void mlir::triton::HCU::populateMemoryOpToLLVMPatterns(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     const TargetInfo &targetInfo, PatternBenefit benefit) {
   PatternBenefit transBenefit = PatternBenefit(benefit.getBenefit() + 1);

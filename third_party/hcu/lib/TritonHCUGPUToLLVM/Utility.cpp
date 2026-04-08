@@ -1,8 +1,8 @@
 #include "Utility.h"
 #include "AsyncUtility.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
-#include "TritonAMDGPUToLLVM/GCNAsmFormat.h"
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
+#include "TritonHCUGPUToLLVM/GCNAsmFormat.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/PatternMatch.h"
@@ -11,8 +11,8 @@
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
 namespace tt = mlir::triton;
 using mlir::triton::ModuleAxisInfoAnalysis;
-using mlir::triton::AMD::DppCtrl;
-using mlir::triton::AMD::ISAFamily;
+using mlir::triton::HCU::DppCtrl;
+using mlir::triton::HCU::ISAFamily;
 using mlir::triton::gpu::appendOrGetExternFuncOp;
 
 namespace {
@@ -24,14 +24,14 @@ enum class ShflKind : uint32_t {
 };
 } // namespace
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 static Value shuffleCommonImpl(Location loc, RewriterBase &rewriter,
                                ISAFamily isaFamily, Value val, Value i,
                                int strideInt, ShflKind mode, Value clamp) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   unsigned bits = val.getType().getIntOrFloatBitWidth();
 
-  // On AMD, the ds_swizzle_b32 and ds_permute_b32 instructions work on
+  // On HCU, the ds_swizzle_b32 and ds_permute_b32 instructions work on
   // 32bit/dwords so we need promote to 32 here.
   auto valType = val.getType();
   if (!valType.isInteger(32) && bits <= 32) {
@@ -73,7 +73,7 @@ static Value shuffleCommonImpl(Location loc, RewriterBase &rewriter,
   Value laneId = b.urem(threadId, warpSize);
   auto bpermute = [&](Value lane) {
     // Multiple lineId by 4. (More on permute instruction semantics:
-    // https://www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/instruction-set-architectures/instinct-mi200-cdna2-instruction-set-architecture.pdf#page=180
+    // https://www.hcu.com/content/dam/hcu/en/documents/instinct-tech-docs/instruction-set-architectures/instinct-mi200-cdna2-instruction-set-architecture.pdf#page=180
     Value byteOffset = b.i32_val(2);
     Value permuteAddr = b.shl(lane, byteOffset);
     return ROCDL::DsBpermuteOp::create(rewriter, loc, valType, permuteAddr,
@@ -396,7 +396,7 @@ Value emitCtaMulticastMask(RewriterBase &rewriter, Location loc, Value groupId,
 Value llLoad(RewriterBase &rewriter, Location loc, Value ptr, Type elemTy,
              Value pred, Value falseVal, Value multicastMask,
              triton::CacheModifier cm, bool forceNoAliasAsyncLoads) {
-  return triton::amdgpu::MaskedLoadOp::create(rewriter, loc, elemTy, ptr, pred,
+  return triton::hcugpu::MaskedLoadOp::create(rewriter, loc, elemTy, ptr, pred,
                                               falseVal, multicastMask, cm,
                                               forceNoAliasAsyncLoads)
       .getResult();
@@ -405,7 +405,7 @@ Value llLoad(RewriterBase &rewriter, Location loc, Value ptr, Type elemTy,
 void llStore(RewriterBase &rewriter, Location loc, Value ptr, Value val,
              Value pred, triton::CacheModifier cm,
              bool forceNoAliasAsyncLoads) {
-  triton::amdgpu::MaskedStoreOp::create(rewriter, loc, ptr, val, pred, cm,
+  triton::hcugpu::MaskedStoreOp::create(rewriter, loc, ptr, val, pred, cm,
                                         forceNoAliasAsyncLoads);
 }
 
@@ -492,7 +492,7 @@ static int32_t getDefaultCtrlBitsForCacheModifier(triton::CacheModifier cm) {
 // .wt: write-through, write data directly to system memory
 int32_t getCtrlBitsForCacheModifierOnTarget(
     triton::CacheModifier cm, bool isLoad,
-    const mlir::triton::AMD::TargetInfo &targetInfo) {
+    const mlir::triton::HCU::TargetInfo &targetInfo) {
   switch (targetInfo.getGPUKind()) {
   case llvm::AMDGPU::GK_GFX942:
   case llvm::AMDGPU::GK_GFX950:
@@ -661,7 +661,7 @@ bool isUsedByDotScaledOp(Operation *op) {
 
   return std::any_of(
       forwardSliceSet.begin(), forwardSliceSet.end(), [](auto *operation) {
-        return isa<triton::DotScaledOp, triton::amdgpu::UpcastMXFPOp>(
+        return isa<triton::DotScaledOp, triton::hcugpu::UpcastMXFPOp>(
             operation);
       });
 }
@@ -709,7 +709,7 @@ bool isChainDotTail(tt::DotOpInterface dotOp) {
 SmallVector<Value> upcast8xMxfp4_SW(RewriterBase &rewriter, Operation *op,
                                     bool toFp16, Value packedVec,
                                     ISAFamily isaFamily, Value scale) {
-  assert((isa<triton::amdgpu::UpcastMXFPOp, triton::gpu::Fp4ToFpOp>(op)) &&
+  assert((isa<triton::hcugpu::UpcastMXFPOp, triton::gpu::Fp4ToFpOp>(op)) &&
          "Expected UpcastMXFPOp or Fp4ToFpOp");
   Location loc = op->getLoc();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -930,4 +930,4 @@ SmallVector<Value> upcast8xMxfp4_SW(RewriterBase &rewriter, Operation *op,
   return results;
 }
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU

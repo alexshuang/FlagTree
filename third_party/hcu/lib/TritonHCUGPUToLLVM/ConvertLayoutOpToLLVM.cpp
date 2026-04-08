@@ -1,10 +1,10 @@
-#include "Analysis/AMDGPUAllocation.h"
+#include "Analysis/HCUGPUAllocation.h"
 #include "PatternTritonGPUOpToLLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Tools/LayoutUtils.h"
 
-using ::mlir::triton::gpu::AMDMfmaEncodingAttr;
+using ::mlir::triton::gpu::HCUMfmaEncodingAttr;
 using ::mlir::triton::gpu::ConvertLayoutOp;
 using ::triton::gpu::LinearEncodingAttr;
 
@@ -22,9 +22,9 @@ public:
   LogicalResult
   matchAndRewrite(triton::gpu::ConvertLayoutOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto &amdTargInfo =
-        static_cast<const mlir::triton::AMD::TargetInfo &>(targetInfo);
-    if (amdTargInfo.getISAFamily() != AMD::ISAFamily::CDNA4)
+    auto &hcuTargInfo =
+        static_cast<const mlir::triton::HCU::TargetInfo &>(targetInfo);
+    if (hcuTargInfo.getISAFamily() != HCU::ISAFamily::CDNA4)
       return failure();
 
     auto srcTy = cast<RankedTensorType>(op.getSrc().getType());
@@ -316,7 +316,7 @@ public:
 
     auto [laneId, warpId] = getLaneAndWarpId(rewriter, loc);
 
-    auto scratchConfig = triton::AMD::getScratchConfigForCvt(
+    auto scratchConfig = triton::HCU::getScratchConfigForCvt(
         op.getSrc().getType(), op.getType());
     auto tensorShapePerCTA =
         convertType<unsigned, int64_t>(triton::gpu::getShapePerCTA(
@@ -388,7 +388,7 @@ public:
     //   offset      =    regBase   xor    regIdx
     //
     // It is the same hack as what we've done in the emitIndices function to get
-    // around performance issues on AMD GPUs
+    // around performance issues on HCU GPUs
     auto getVecAddr = [&](LinearLayout &layout, Value &regBase,
                           int regSlice) -> Value {
       auto regIdx = layout
@@ -547,7 +547,7 @@ public:
   LogicalResult
   matchAndRewrite(ConvertLayoutOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!op->hasAttr(mlir::triton::AMD::AttrSharedMemPadded))
+    if (!op->hasAttr(mlir::triton::HCU::AttrSharedMemPadded))
       return failure();
     auto srcType = op.getSrc().getType();
     auto dstType = op.getType();
@@ -564,7 +564,7 @@ private:
 };
 } // namespace
 
-void mlir::triton::AMD::populateConvertLayoutOpToLLVMPatterns(
+void mlir::triton::HCU::populateConvertLayoutOpToLLVMPatterns(
     LLVMTypeConverter &typeConverter, const TargetInfo &targetInfo,
     RewritePatternSet &patterns, PatternBenefit benefit) {
   patterns.add<ConvertLayoutOpPermlaneSwap>(typeConverter, targetInfo, benefit);

@@ -1,4 +1,4 @@
-add_triton_library(TritonAMDGPUTransforms
+add_triton_library(TritonHCUGPUTransforms
   # AccelerateAMDMatmul.cpp
   BlockPingpong.cpp
   CanonicalizePointers.cpp
@@ -26,12 +26,12 @@ add_triton_library(TritonAMDGPUTransforms
   MlsLowering.cpp
 
   DEPENDS
-  TritonAMDGPUIR
-  TritonAMDGPUTransformsIncGen
+  TritonHCUGPUIR
+  TritonHCUGPUTransformsIncGen
   TritonGPUIR
   TritonAMDUtils
   TritonAMDAnalysis
 )
 
-target_include_directories(TritonAMDGPUTransforms PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
-target_include_directories(TritonAMDGPUTransforms PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../../include)
+target_include_directories(TritonHCUGPUTransforms PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../include)
+target_include_directories(TritonHCUGPUTransforms PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/../../include)

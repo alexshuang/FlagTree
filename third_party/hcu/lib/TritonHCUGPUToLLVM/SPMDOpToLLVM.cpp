@@ -1,4 +1,4 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "PatternTritonGPUOpToLLVM.h"
 #include "Utility.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -27,11 +27,11 @@ struct GetNumProgramsOpConversion
 };
 
 struct CondBarrierOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::CondBarrierOp> {
+    : public ConvertOpToLLVMPattern<triton::hcugpu::CondBarrierOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::CondBarrierOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::CondBarrierOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
     Block *currentBlock = rewriter.getInsertionBlock();
@@ -53,7 +53,7 @@ struct CondBarrierOpConversion
 
 } // namespace
 
-void mlir::triton::AMD::populateSPMDOpToLLVMPattern(
+void mlir::triton::HCU::populateSPMDOpToLLVMPattern(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     PatternBenefit benefit) {
   patterns.add<GetNumProgramsOpConversion>(typeConverter, benefit);

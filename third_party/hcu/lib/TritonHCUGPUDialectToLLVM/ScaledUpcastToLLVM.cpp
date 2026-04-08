@@ -1,22 +1,22 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
-#include "TritonAMDGPUToLLVM/PatternTritonAMDGPUToLLVM.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
+#include "TritonHCUGPUToLLVM/PatternTritonHCUGPUToLLVM.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
-#include "third_party/amd/lib/TritonAMDGPUToLLVM/Utility.h"
+#include "third_party/hcu/lib/TritonHCUGPUToLLVM/Utility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 
 using namespace mlir;
 using namespace mlir::triton;
-using mlir::LLVM::AMD::upcast4xMxfp8_HW;
-using mlir::LLVM::AMD::upcast8xMxfp4_HW;
+using mlir::LLVM::HCU::upcast4xMxfp8_HW;
+using mlir::LLVM::HCU::upcast8xMxfp4_HW;
 
 namespace {
 struct ScaledUpcastFp4OpPattern
-    : ConvertOpToLLVMPattern<amdgpu::ScaledUpcastFp4Op> {
+    : ConvertOpToLLVMPattern<hcugpu::ScaledUpcastFp4Op> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(amdgpu::ScaledUpcastFp4Op upcastOp, OpAdaptor adaptor,
+  matchAndRewrite(hcugpu::ScaledUpcastFp4Op upcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = upcastOp.getLoc();
     auto elemType = upcastOp.getType().getElementType();
@@ -52,11 +52,11 @@ struct ScaledUpcastFp4OpPattern
 };
 
 struct ScaledUpcastFp8OpPattern
-    : ConvertOpToLLVMPattern<amdgpu::ScaledUpcastFp8Op> {
+    : ConvertOpToLLVMPattern<hcugpu::ScaledUpcastFp8Op> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(amdgpu::ScaledUpcastFp8Op upcastOp, OpAdaptor adaptor,
+  matchAndRewrite(hcugpu::ScaledUpcastFp8Op upcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = upcastOp.getLoc();
     auto elemType = upcastOp.getType().getElementType();
@@ -103,7 +103,7 @@ struct ScaledUpcastFp8OpPattern
 };
 } // anonymous namespace
 
-void mlir::triton::AMD::populateScaledUpcastOpToLLVMPatterns(
+void mlir::triton::HCU::populateScaledUpcastOpToLLVMPatterns(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     PatternBenefit benefit) {
   patterns.add<ScaledUpcastFp4OpPattern>(typeConverter, benefit);

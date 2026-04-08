@@ -1,7 +1,7 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
-#include "TritonAMDGPUTransforms/Passes.h"
-#include "amd/lib/TritonAMDGPUToLLVM/Utility.h"
-#include "amd/lib/TritonAMDGPUTransforms/Utility.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
+#include "TritonHCUGPUTransforms/Passes.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/Utility.h"
+#include "hcu/lib/TritonHCUGPUTransforms/Utility.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "triton/Analysis/AxisInfo.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -36,7 +36,7 @@
 // - On GFX1250 the number of (multicast) async_load and async_stores. On
 //   GFX1250 those are out of order with register loads so we will not get
 //   conservative waits.
-// For amdg.tdm_async_wait we only count TDM ops. Each tdm_load/store will
+// For hcug.tdm_async_wait we only count TDM ops. Each tdm_load/store will
 // produce exactly one instruction so it directly correlates with OP at TGGIR
 // level.
 
@@ -45,8 +45,8 @@ namespace ttg = triton::gpu;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUUPDATEASYNCWAITCOUNT
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUUPDATEASYNCWAITCOUNT
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -81,18 +81,18 @@ int getNumberOfLoadInstructions(RankedTensorType srcTy, ttg::MemDescType dstTy,
 // If emitRemarkOnNonAsyncOp is set for any non async op having a side effect on
 // GlobalMemory an performance remark will be emitted
 int getOpNumberOfAsyncLoadInstructions(Operation *op,
-                                       AMD::TargetInfo targetInfo,
+                                       HCU::TargetInfo targetInfo,
                                        ModuleAxisInfoAnalysis &axisInfo,
                                        bool emitRemarkOnNonAsyncOp) {
   if (auto copyOp = dyn_cast<ttg::AsyncCopyGlobalToLocalOp>(op)) {
-    int contig = LLVM::AMD::getVectorSize(copyOp.getSrc(), axisInfo);
+    int contig = LLVM::HCU::getVectorSize(copyOp.getSrc(), axisInfo);
     return getNumberOfLoadInstructions(copyOp.getSrc().getType(),
                                        copyOp.getResult().getType(),
                                        copyOp.getMask(), contig, axisInfo);
-  } else if (auto bufferOp = dyn_cast<amdgpu::BufferLoadToLocalOp>(op)) {
-    auto ptrType = cast<RankedTensorType>(LLVM::AMD::getPointerTypeWithShape(
+  } else if (auto bufferOp = dyn_cast<hcugpu::BufferLoadToLocalOp>(op)) {
+    auto ptrType = cast<RankedTensorType>(LLVM::HCU::getPointerTypeWithShape(
         bufferOp.getPtr(), bufferOp.getOffsets()));
-    int contig = LLVM::AMD::getVectorSize(bufferOp.getPtr(),
+    int contig = LLVM::HCU::getVectorSize(bufferOp.getPtr(),
                                           bufferOp.getOffsets(), axisInfo);
     return getNumberOfLoadInstructions(ptrType, bufferOp.getDest().getType(),
                                        bufferOp.getMask(), contig, axisInfo);
@@ -292,11 +292,11 @@ void updateWaitCount(WaitType waitOp,
 
   if (std::is_same_v<WaitType, ttg::AsyncWaitOp>) {
     // Replace ttg.async_wait which counts outstanding commits groups with
-    // amdg.async_wait which counts the number of oustanding
+    // hcug.async_wait which counts the number of oustanding
     // intrinsics
     auto tokens = waitOp.getAsyncToken();
     rewriter.setInsertionPointAfter(waitOp);
-    rewriter.replaceOpWithNewOp<amdgpu::AsyncWaitOp>(waitOp, tokens, waitCnt);
+    rewriter.replaceOpWithNewOp<hcugpu::AsyncWaitOp>(waitOp, tokens, waitCnt);
   } else {
     // For TDM each TTGIR op will create exactly one intrinsics so we do not use
     // a separate op
@@ -306,15 +306,15 @@ void updateWaitCount(WaitType waitOp,
 
 } // anonymous namespace
 
-struct TritonAMDGPUUpdateAsyncWaitCountPass
-    : impl::TritonAMDGPUUpdateAsyncWaitCountBase<
-          TritonAMDGPUUpdateAsyncWaitCountPass> {
+struct TritonHCUGPUUpdateAsyncWaitCountPass
+    : impl::TritonHCUGPUUpdateAsyncWaitCountBase<
+          TritonHCUGPUUpdateAsyncWaitCountPass> {
   using Base::Base;
 
   void runOnOperation() override {
-    tt::AMD::TargetInfo targetInfo(archGenerationName);
+    tt::HCU::TargetInfo targetInfo(archGenerationName);
     if (!isCDNA(targetInfo.getISAFamily()) &&
-        targetInfo.getISAFamily() != tt::AMD::ISAFamily::GFX1250) {
+        targetInfo.getISAFamily() != tt::HCU::ISAFamily::GFX1250) {
       return;
     }
 
@@ -325,8 +325,8 @@ struct TritonAMDGPUUpdateAsyncWaitCountPass
     // performance.
     bool supportsAsyncLoads = true;
     switch (targetInfo.getISAFamily()) {
-    case triton::AMD::ISAFamily::CDNA3:
-    case triton::AMD::ISAFamily::CDNA4:
+    case triton::HCU::ISAFamily::CDNA3:
+    case triton::HCU::ISAFamily::CDNA4:
       supportsAsyncLoads = false;
       break;
     default:

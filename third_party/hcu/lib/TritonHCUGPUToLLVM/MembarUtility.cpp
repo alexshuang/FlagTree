@@ -1,16 +1,16 @@
-#include "TritonAMDGPUToLLVM/MembarUtility.h"
+#include "TritonHCUGPUToLLVM/MembarUtility.h"
 #include "AsyncUtility.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 namespace {
 // Returns true if one of the operands is a LocalLoad synced via AsyncWait.
 bool filterAsyncLocalLoadsDependencies(Operation *op1, Operation *op2) {
   auto isAsyncLoad = [](Operation *op) {
     return llvm::isa<triton::gpu::AsyncCopyGlobalToLocalOp,
-                     triton::amdgpu::MatrixLoadToLocalOp,
-                     triton::amdgpu::BufferLoadToLocalOp>(op);
+                     triton::hcugpu::MatrixLoadToLocalOp,
+                     triton::hcugpu::BufferLoadToLocalOp>(op);
   };
   auto isLocalLoadWithAsyncWaitToken = [](Operation *op) {
     auto localLoad = llvm::dyn_cast<triton::gpu::LocalLoadOp>(op);
@@ -28,10 +28,10 @@ bool filterAsyncLocalLoadsDependencies(Operation *op1, Operation *op2) {
 
 bool filterLDSMemoryBarriersDependencies(Operation *op1, Operation *op2) {
   auto isLDSMemoryBarrierOp = [](Operation *op) {
-    return llvm::isa<triton::amdgpu::InitBarrierOp,
-                     triton::amdgpu::ArriveBarrierOp,
-                     triton::amdgpu::AsyncCopyMbarrierArriveOp,
-                     triton::amdgpu::WaitBarrierOp>(op);
+    return llvm::isa<triton::hcugpu::InitBarrierOp,
+                     triton::hcugpu::ArriveBarrierOp,
+                     triton::hcugpu::AsyncCopyMbarrierArriveOp,
+                     triton::hcugpu::WaitBarrierOp>(op);
   };
 
   return (isLDSMemoryBarrierOp(op1) && isLDSMemoryBarrierOp(op2));
@@ -42,4 +42,4 @@ bool membarFilter(Operation *op1, Operation *op2) {
   return (filterAsyncLocalLoadsDependencies(op1, op2) ||
           filterLDSMemoryBarriersDependencies(op1, op2));
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

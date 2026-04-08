@@ -1,7 +1,7 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/Utility/CommonUtils.h"
-#include "third_party/amd/include/Utils/Utility.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/Utility/CommonUtils.h"
+#include "third_party/hcu/include/Utils/Utility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 
 using namespace mlir;
@@ -13,11 +13,11 @@ template <typename T> unsigned getNumElements(const ArrayRef<T> shape) {
   return std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>());
 }
 
-struct ConcatOpConversion : public ConvertOpToLLVMPattern<amdgpu::ConcatOp> {
+struct ConcatOpConversion : public ConvertOpToLLVMPattern<hcugpu::ConcatOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(amdgpu::ConcatOp op, OpAdaptor adaptor,
+  matchAndRewrite(hcugpu::ConcatOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     RankedTensorType resultType =
@@ -42,7 +42,7 @@ struct ConcatOpConversion : public ConvertOpToLLVMPattern<amdgpu::ConcatOp> {
     // Default order is fastest to slowest varying dimension.
     std::vector<unsigned> defaultOrder(rank);
     std::iota(defaultOrder.rbegin(), defaultOrder.rend(), 0);
-    auto srcToDstShape = LLVM::AMD::multiDimElementwise<int64_t, int64_t>(
+    auto srcToDstShape = LLVM::HCU::multiDimElementwise<int64_t, int64_t>(
         dstShape, srcShape, std::divides<unsigned>());
 
     auto sources = adaptor.getSources();
@@ -73,7 +73,7 @@ struct ConcatOpConversion : public ConvertOpToLLVMPattern<amdgpu::ConcatOp> {
     // 1. for all elements in dst tensor
     for (int regId = 0; regId < dstRegNum; ++regId) {
       // 2.   get dst value location in tensor
-      auto elemCoords = mlir::triton::AMD::getElemCoordinatesFromRegisters(
+      auto elemCoords = mlir::triton::HCU::getElemCoordinatesFromRegisters(
           linearLayoutDst, regId, ctx);
       auto elemCoordsArray =
           llvm::to_vector(llvm::make_second_range(elemCoords));
@@ -81,7 +81,7 @@ struct ConcatOpConversion : public ConvertOpToLLVMPattern<amdgpu::ConcatOp> {
       // into a destination tensor shape. Determine which source tensor contains
       // the current CTA tile.
       auto multiDimOperandIdx =
-          LLVM::AMD::multiDimElementwise<int32_t, int64_t>(
+          LLVM::HCU::multiDimElementwise<int32_t, int64_t>(
               elemCoordsArray, srcShape, std::divides<unsigned>());
       // Compute linear index of the current source tensor.
       // Concat operands are laid out in the destination tensor
@@ -95,7 +95,7 @@ struct ConcatOpConversion : public ConvertOpToLLVMPattern<amdgpu::ConcatOp> {
         elemCoords[dim].second -= multiDimOperandIdx[dim] * srcShape[dim];
 
       // 5.   find source register number which holds dst value
-      std::optional<int> srcReg = mlir::triton::AMD::getRegFromCoordinates(
+      std::optional<int> srcReg = mlir::triton::HCU::getRegFromCoordinates(
           linearLayoutSrc, elemCoords, ctx);
       assert(srcReg.has_value());
 
@@ -112,10 +112,10 @@ struct ConcatOpConversion : public ConvertOpToLLVMPattern<amdgpu::ConcatOp> {
 };
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 void populateConcatOpToLLVMPatterns(mlir::LLVMTypeConverter &typeConverter,
                                     mlir::RewritePatternSet &patterns,
                                     mlir::PatternBenefit benefit) {
   patterns.add<ConcatOpConversion>(typeConverter, benefit);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

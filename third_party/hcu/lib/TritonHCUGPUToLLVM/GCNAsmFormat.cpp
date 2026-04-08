@@ -1,4 +1,4 @@
-#include "TritonAMDGPUToLLVM/GCNAsmFormat.h"
+#include "TritonHCUGPUToLLVM/GCNAsmFormat.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "triton/Conversion/TritonGPUToLLVM/AsmFormat.h"

@@ -1,13 +1,13 @@
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/TargetParser/TargetParser.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 ISAFamily deduceISAFamily(llvm::StringRef arch) {
   llvm::AMDGPU::GPUKind kind = llvm::AMDGPU::parseArchAMDGCN(arch);
 
-  // See https://llvm.org/docs/AMDGPUUsage.html#processors for how to categorize
+  // See https://llvm.org/docs/HCUGPUUsage.html#processors for how to categorize
   // the following target gfx architectures.
 
   if (kind == llvm::AMDGPU::GK_GFX1250)
@@ -55,13 +55,13 @@ ISAFamily deduceISAFamily(llvm::StringRef arch) {
 
 bool supportsVDot(llvm::StringRef arch) {
   switch (deduceISAFamily(arch)) {
-  case AMD::ISAFamily::CDNA1:
-  case AMD::ISAFamily::CDNA2:
-  case AMD::ISAFamily::CDNA3:
-  case AMD::ISAFamily::CDNA4:
-  case AMD::ISAFamily::RDNA2:
-  case AMD::ISAFamily::RDNA3:
-  case AMD::ISAFamily::RDNA4:
+  case HCU::ISAFamily::CDNA1:
+  case HCU::ISAFamily::CDNA2:
+  case HCU::ISAFamily::CDNA3:
+  case HCU::ISAFamily::CDNA4:
+  case HCU::ISAFamily::RDNA2:
+  case HCU::ISAFamily::RDNA3:
+  case HCU::ISAFamily::RDNA4:
     return true;
   default:
     break;
@@ -122,4 +122,4 @@ bool supportsHCUISAFeature(llvm::StringRef arch, HCUISAFeature feature) {
   return (uint64_t(hcuIsaFeatures) & featureBits) == featureBits;
 }
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

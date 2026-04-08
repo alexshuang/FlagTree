@@ -1,9 +1,9 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_OPTIMIZELDSUTILITY_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_OPTIMIZELDSUTILITY_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_OPTIMIZELDSUTILITY_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_OPTIMIZELDSUTILITY_H_
 
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 std::vector<SmallVector<unsigned>> factorizePowerOf2(int n, int rank);
 
@@ -41,6 +41,6 @@ estimateResourcesForReplacement(OpBuilder builder,
                                 mlir::triton::gpu::ConvertLayoutOp cvtOp,
                                 Attribute tmpLayout);
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_OPTIMIZELDSUTILITY_H_
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_OPTIMIZELDSUTILITY_H_

@@ -1,12 +1,12 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_PATTERNTRITONGPUOPTOLLVM_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_PATTERNTRITONGPUOPTOLLVM_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_PATTERNTRITONGPUOPTOLLVM_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_PATTERNTRITONGPUOPTOLLVM_H_
 
 #include "TargetInfo.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Analysis/AxisInfo.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 void populateConvertLayoutOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                            const TargetInfo &targetInfo,
                                            RewritePatternSet &patterns,
@@ -45,7 +45,7 @@ void populateMLSOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
 void populateSPMDOpToLLVMPattern(LLVMTypeConverter &typeConverter,
                                  RewritePatternSet &patterns,
                                  PatternBenefit benefit);
-void populateTritonAMDGPUToLLVMPatterns(LLVMTypeConverter &typeConverter,
+void populateTritonHCUGPUToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                         RewritePatternSet &patterns,
                                         PatternBenefit benefit);
 
@@ -69,6 +69,6 @@ void populateTensorPtrOpsToLLVMPatterns(LLVMTypeConverter &typeConverter,
 void populateBarrierOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                      RewritePatternSet &patterns,
                                      PatternBenefit benefit);
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_PATTERNTRITONGPUOPTOLLVM_H_
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_PATTERNTRITONGPUOPTOLLVM_H_

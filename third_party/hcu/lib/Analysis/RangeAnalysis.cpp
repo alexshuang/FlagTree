@@ -1,4 +1,4 @@
-#include "third_party/amd/include/Analysis/RangeAnalysis.h"
+#include "third_party/hcu/include/Analysis/RangeAnalysis.h"
 #include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
 #include "mlir/Analysis/DataFlow/IntegerRangeAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -6,7 +6,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Iterators.h"
 #include "mlir/Interfaces/Utils/InferIntRangeCommon.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -55,7 +55,7 @@
 //    a silent no-op.
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "tritonamdgpu-range-analysis"
+#define DEBUG_TYPE "tritonhcugpu-range-analysis"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
@@ -249,7 +249,7 @@ maybeGetAssumedRange(const SetVector<Operation *> &allAssumptions, Value anchor,
 
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 std::optional<int64_t>
 TritonIntegerRangeAnalysis::maybeGetTripCount(LoopLikeOpInterface loop) {
@@ -501,7 +501,7 @@ LogicalResult TritonIntegerRangeAnalysis::visitOperation(
       continue;
 
     const mlir::IntegerValueRange &vr = lattice->getValue();
-    if (!vr.isUninitialized() && !AMD::isEmptyInitializedRange(vr.getValue()))
+    if (!vr.isUninitialized() && !HCU::isEmptyInitializedRange(vr.getValue()))
       continue;
 
     const ConstantIntRanges &assumedVr = assumedIter->second;
@@ -561,7 +561,7 @@ LogicalResult TritonIntegerRangeAnalysis::visitOperationHelper(
         return lattice->getValue();
       });
 
-  if (auto sliceOp = dyn_cast<triton::amdgpu::ExtractSliceOp>(op)) {
+  if (auto sliceOp = dyn_cast<triton::hcugpu::ExtractSliceOp>(op)) {
     joinCallback(sliceOp->getResult(0), argIntValueRanges[0]);
     return success();
   }
@@ -815,10 +815,10 @@ void populateFoldTrueCmpIOpPatterns(RewritePatternSet &patterns,
 }
 
 void initializeFuncOps(Operation *op,
-                       AMD::TritonIntegerRangeAnalysis *rangeAnalysis) {
+                       HCU::TritonIntegerRangeAnalysis *rangeAnalysis) {
   op->walk<WalkOrder::PreOrder>([&rangeAnalysis](FuncOp funcOp) {
     rangeAnalysis->initializeFuncOp(funcOp);
   });
 }
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

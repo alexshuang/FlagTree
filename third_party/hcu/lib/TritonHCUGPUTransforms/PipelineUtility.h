@@ -1,14 +1,14 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTRANSFORMS_PIPELINEUTILITY_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTRANSFORMS_PIPELINEUTILITY_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTRANSFORMS_PIPELINEUTILITY_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTRANSFORMS_PIPELINEUTILITY_H_
 
 #include "mlir/IR/Operation.h"
-#include "third_party/amd/include/Analysis/AxisInfoExt.h"
+#include "third_party/hcu/include/Analysis/AxisInfoExt.h"
 #include "triton/Dialect/TritonGPU/Transforms/Schedule.h"
 
 namespace mlir {
 
-namespace triton::AMD {
-constexpr char AttrBypassLDS[] = "amdg.bypass_lds_load";
+namespace triton::HCU {
+constexpr char AttrBypassLDS[] = "hcug.bypass_lds_load";
 }
 
 // This function will
@@ -34,7 +34,7 @@ using LoadToInfoMap = llvm::MapVector<Operation *, LoadInfo>;
 // levels and final users of load ops. For details you can check the comment of
 // ttg::loadOpsToIndirectionLevel.
 llvm::MapVector<Operation *, std::pair<int, Operation *>>
-getIndirectLevel(triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis,
+getIndirectLevel(triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                  scf::ForOp &forOp, int numStages);
 
 namespace SingleDotSchedule {
@@ -106,4 +106,4 @@ LogicalResult checkPreconditions(scf::ForOp forOp, int numStages,
 } // namespace ChainedDotSchedule
 } // namespace mlir
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTRANSFORMS_PIPELINEUTILITY_H_
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTRANSFORMS_PIPELINEUTILITY_H_

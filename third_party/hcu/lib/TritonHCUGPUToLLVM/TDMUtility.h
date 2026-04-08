@@ -1,13 +1,13 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TDMUTILITY_H
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TDMUTILITY_H
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_TDMUTILITY_H
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_TDMUTILITY_H
 
 #include "TargetInfo.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include <optional>
 
-using mlir::triton::AMD::TargetInfo;
+using mlir::triton::HCU::TargetInfo;
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 
 // Structure to hold TDM descriptor groups
 struct TDMDescriptor {
@@ -53,6 +53,6 @@ void emitTDMOperation(RewriterBase &rewriter, Location loc,
                       ArrayRef<Value> offset, Value dstPtr, Value pred,
                       Type elementType, Value barrierPtr, bool isLoad);
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_TDMUTILITY_H
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_TDMUTILITY_H

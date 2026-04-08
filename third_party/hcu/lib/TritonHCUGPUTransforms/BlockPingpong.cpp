@@ -1,4 +1,4 @@
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -7,12 +7,12 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "llvm/ADT/TypeSwitch.h"
 
-#define DEBUG_TYPE "tritonamdgpu-block-pingpong"
+#define DEBUG_TYPE "tritonhcugpu-block-pingpong"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
@@ -21,8 +21,8 @@ namespace tt = mlir::triton;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUBLOCKPINGPONG
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUBLOCKPINGPONG
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -31,7 +31,7 @@ namespace {
 // by interleaving the execution of two warps on each SIMD. Especially it groups
 // instructions into Dot and Memory clusters so they can efficiently run in
 // parallel. Also this pass inserts `rocdl.s.setprio` operation and
-// `amdg.cond_barrier` to run two parallel warps in synchronization.
+// `hcug.cond_barrier` to run two parallel warps in synchronization.
 // This scheduling doesn't help improving the memory latency itself but it
 // relies on software-pipelining to hide the global latency. Likely to improve
 // the performance of compute-bound cases.
@@ -800,7 +800,7 @@ LogicalResult Pingponger::transformChainedDotSchedule(OpBuilder &builder,
   prependOp(ROCDL::SchedBarrier::create(builder, loc, 0), false);
   prependOp(ROCDL::SetPrioOp::create(builder, loc, lowPriority), false);
   auto dsAttr = builder.getI32IntegerAttr(0);
-  prependOp(tt::amdgpu::MemoryCounterWaitOp::create(
+  prependOp(tt::hcugpu::MemoryCounterWaitOp::create(
                 builder, loc, /* load= */ nullptr, /* store= */ nullptr,
                 /* ds= */ dsAttr),
             false);
@@ -834,7 +834,7 @@ LogicalResult Pingponger::transformChainedDotSchedule(OpBuilder &builder,
   updateOpInsertion(lastInsertedOp->getBlock()->getTerminator());
   prependOp(ROCDL::SchedBarrier::create(builder, loc, 0), false);
   prependOp(ROCDL::SetPrioOp::create(builder, loc, lowPriority), false);
-  prependOp(tt::amdgpu::MemoryCounterWaitOp::create(
+  prependOp(tt::hcugpu::MemoryCounterWaitOp::create(
                 builder, loc, /* load= */ nullptr, /* store= */ nullptr,
                 /* ds= */ dsAttr),
             false);
@@ -930,12 +930,12 @@ void Pingponger::addAsymmetricSyncToLoop(OpBuilder &builder, Location loc) {
   auto warpHigh = arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::ne,
                                         warpIDX, constZero);
   auto condBarrierHigh =
-      tt::amdgpu::CondBarrierOp::create(builder, loc, warpHigh);
+      tt::hcugpu::CondBarrierOp::create(builder, loc, warpHigh);
 
   // Insert condbarrier::first_half after the end of the loop
   builder.setInsertionPointAfter(forOp);
   auto condBarrierLow =
-      tt::amdgpu::CondBarrierOp::create(builder, loc, warpLow);
+      tt::hcugpu::CondBarrierOp::create(builder, loc, warpLow);
 }
 
 void Pingponger::getDotPingponged() {
@@ -1064,7 +1064,7 @@ void Pingponger::getDotPingponged() {
   auto encoding = cast<RankedTensorType>(aType).getEncoding();
   auto srcEncoding = cast<ttg::DotOperandEncodingAttr>(encoding);
   kWidth = srcEncoding.getKWidth();
-  auto mfmaEncoding = cast<ttg::AMDMfmaEncodingAttr>(srcEncoding.getParent());
+  auto mfmaEncoding = cast<ttg::HCUMfmaEncodingAttr>(srcEncoding.getParent());
   SmallVector<int64_t> intShape;
   auto mnkDim = mfmaEncoding.getInstrShape();
   intShape.push_back(mnkDim[0]);
@@ -1231,8 +1231,8 @@ void Pingponger::getDotPingponged() {
 
 } // anonymous namespace
 
-struct TritonAMDGPUBlockPingpongPass
-    : impl::TritonAMDGPUBlockPingpongBase<TritonAMDGPUBlockPingpongPass> {
+struct TritonHCUGPUBlockPingpongPass
+    : impl::TritonHCUGPUBlockPingpongBase<TritonHCUGPUBlockPingpongPass> {
   using Base::Base;
 
   void runOnOperation() override {

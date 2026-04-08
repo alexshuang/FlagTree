@@ -1,9 +1,9 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
-#include "TritonAMDGPUToLLVM/GCNAsmFormat.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
+#include "TritonHCUGPUToLLVM/GCNAsmFormat.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/Utility/CommonUtils.h"
-#include "third_party/amd/include/Utils/Utility.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/Utility/CommonUtils.h"
+#include "third_party/hcu/include/Utils/Utility.h"
 #include "triton/Analysis/Utility.h"
 #include "triton/Conversion/MLIRTypes.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
@@ -20,10 +20,10 @@ using namespace mlir::triton;
 namespace {
 
 struct ExtractSliceOpConversion
-    : public ConvertOpToLLVMPattern<amdgpu::ExtractSliceOp> {
+    : public ConvertOpToLLVMPattern<hcugpu::ExtractSliceOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
-  LogicalResult processLayout(amdgpu::ExtractSliceOp op, OpAdaptor adaptor,
+  LogicalResult processLayout(hcugpu::ExtractSliceOp op, OpAdaptor adaptor,
                               ConversionPatternRewriter &rewriter) const {
     Location loc = op->getLoc();
     auto srcTy = cast<RankedTensorType>(op.getSource().getType());
@@ -57,13 +57,13 @@ struct ExtractSliceOpConversion
     // 1. for every dst register
     for (int regId = 0; regId < dstRegNum; ++regId) {
       // 2.   get dst element coordinates relative to tile start
-      auto elemCoords = mlir::triton::AMD::getElemCoordinatesFromRegisters(
+      auto elemCoords = mlir::triton::HCU::getElemCoordinatesFromRegisters(
           linearLayoutDst, regId, ctx);
       // 3.   add coordinates of tile start relative to parent tensor
       for (int i = 0; i < rank; ++i)
         elemCoords[i].second += offsets[i];
       // 4.   find source register number which holds dst value
-      std::optional<int> srcReg = mlir::triton::AMD::getRegFromCoordinates(
+      std::optional<int> srcReg = mlir::triton::HCU::getRegFromCoordinates(
           linearLayoutSrc, elemCoords, ctx);
       assert(srcReg.has_value());
 
@@ -79,7 +79,7 @@ struct ExtractSliceOpConversion
   }
 
   LogicalResult
-  matchAndRewrite(amdgpu::ExtractSliceOp op, OpAdaptor adaptor,
+  matchAndRewrite(hcugpu::ExtractSliceOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcTy = op.getSource().getType();
     return processLayout(op, adaptor, rewriter);
@@ -87,11 +87,11 @@ struct ExtractSliceOpConversion
 };
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 void populateExtractSliceOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                           RewritePatternSet &patterns,
                                           PatternBenefit benefit) {
   patterns.add<ExtractSliceOpConversion>(typeConverter, benefit);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

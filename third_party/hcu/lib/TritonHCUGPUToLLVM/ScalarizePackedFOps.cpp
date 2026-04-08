@@ -1,11 +1,11 @@
-#include "TritonAMDGPUToLLVM/Passes.h"
+#include "TritonHCUGPUToLLVM/Passes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
 
-#define DEBUG_TYPE "tritonamdgpu-scalarize-packed-fops"
+#define DEBUG_TYPE "tritonhcugpu-scalarize-packed-fops"
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
@@ -117,7 +117,7 @@ struct ScalarizePackedFOps : FunctionPass {
 
 char ScalarizePackedFOps::ID = 0;
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 void runScalarizePackedFOpsPass(Function &F) {
   ScalarizePackedFOps pass;
   pass.runOnFunction(F);
@@ -125,4 +125,4 @@ void runScalarizePackedFOpsPass(Function &F) {
   assert(!llvm::verifyFunction(F) &&
          "expected function to verify successfully");
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

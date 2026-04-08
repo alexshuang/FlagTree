@@ -1,7 +1,7 @@
 #include "AsyncUtility.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "PatternTritonGPUOpToLLVM.h"
-#include "TritonAMDGPUToLLVM/Passes.h"
+#include "TritonHCUGPUToLLVM/Passes.h"
 #include "Utility.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -19,12 +19,12 @@ using namespace mlir::triton::gpu;
 namespace {
 
 class ConvertMaskedLoadOp
-    : public OpRewritePattern<triton::amdgpu::MaskedLoadOp> {
+    : public OpRewritePattern<triton::hcugpu::MaskedLoadOp> {
 public:
-  ConvertMaskedLoadOp(MLIRContext *context, const AMD::TargetInfo &targetInfo)
+  ConvertMaskedLoadOp(MLIRContext *context, const HCU::TargetInfo &targetInfo)
       : OpRewritePattern(context), targetInfo(targetInfo) {}
 
-  LogicalResult matchAndRewrite(triton::amdgpu::MaskedLoadOp loadOp,
+  LogicalResult matchAndRewrite(triton::hcugpu::MaskedLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
     auto loc = loadOp.getLoc();
     TritonLLVMOpBuilder b(loc, rewriter);
@@ -37,8 +37,8 @@ public:
 
     bool volatileFlag, nonTmpFlag;
     std::tie(volatileFlag, nonTmpFlag) =
-        mlir::LLVM::AMD::getCacheModifierFlagsForLoadStore(
-            cacheMod, mlir::LLVM::AMD::MemoryOp::Load);
+        mlir::LLVM::HCU::getCacheModifierFlagsForLoadStore(
+            cacheMod, mlir::LLVM::HCU::MemoryOp::Load);
 
     auto createLoadWithAttrs = [&](Location loadLoc) -> Value {
       int vecBits = 0;
@@ -52,7 +52,7 @@ public:
       if (multicastMask && targetInfo.supportsClusterLoadBitWidth(vecBits)) {
         std::string intrinsic =
             "llvm.amdgcn.cluster.load.b" + std::to_string(vecBits);
-        auto cacheModBits = LLVM::AMD::getCtrlBitsForCacheModifierOnTarget(
+        auto cacheModBits = LLVM::HCU::getCtrlBitsForCacheModifierOnTarget(
             cacheMod, true, targetInfo);
         // The intrinsics only works with int32 or vec of int32 for >32bit
         Type resTy = i32_ty;
@@ -73,7 +73,7 @@ public:
           LLVM::LoadOp::create(rewriter, loadLoc, elemTy, ptr, /*alignment*/ 0,
                                volatileFlag, nonTmpFlag);
       if (loadOp.getForceNoAlias()) {
-        AMD::addLocalLoadNoAliasScope(load);
+        HCU::addLocalLoadNoAliasScope(load);
       }
       return load;
     };
@@ -110,15 +110,15 @@ public:
   }
 
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 };
 
 class ConvertMaskedStoreOp
-    : public OpRewritePattern<triton::amdgpu::MaskedStoreOp> {
+    : public OpRewritePattern<triton::hcugpu::MaskedStoreOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(triton::amdgpu::MaskedStoreOp storeOp,
+  LogicalResult matchAndRewrite(triton::hcugpu::MaskedStoreOp storeOp,
                                 PatternRewriter &rewriter) const override {
 
     auto loc = storeOp.getLoc();
@@ -129,8 +129,8 @@ public:
 
     bool volatileFlag, nonTmpFlag;
     std::tie(volatileFlag, nonTmpFlag) =
-        mlir::LLVM::AMD::getCacheModifierFlagsForLoadStore(
-            storeOp.getCache(), mlir::LLVM::AMD::MemoryOp::Store);
+        mlir::LLVM::HCU::getCacheModifierFlagsForLoadStore(
+            storeOp.getCache(), mlir::LLVM::HCU::MemoryOp::Store);
 
     int alignment = 0;
     if (auto vecTy = dyn_cast<VectorType>(elemTy)) {
@@ -143,7 +143,7 @@ public:
       auto store = LLVM::StoreOp::create(rewriter, storeLoc, val, ptr,
                                          alignment, volatileFlag, nonTmpFlag);
       if (storeOp.getForceNoAlias()) {
-        AMD::addLocalLoadNoAliasScope(store);
+        HCU::addLocalLoadNoAliasScope(store);
       }
       return store;
     };
@@ -177,13 +177,13 @@ public:
 
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 void populateMaskedOpsToLLVMPatterns(RewritePatternSet &patterns,
                                      const TargetInfo &targetInfo) {
   patterns.add<ConvertMaskedLoadOp>(patterns.getContext(), targetInfo);
   patterns.add<ConvertMaskedStoreOp>(patterns.getContext());
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU
 
 // namespace mlir::triton

@@ -1,4 +1,4 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "TargetInfo.h"
 #include "Utility.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -334,8 +334,8 @@ Fp16_to_Fp8E5M2_RTNE_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                v);
 }
 
-ConverterT Fp16_to_Fp8E5M2_RTNE(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp16_to_Fp8E5M2_RTNE_HW
+ConverterT Fp16_to_Fp8E5M2_RTNE(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp16_to_Fp8E5M2_RTNE_HW
                                             : Fp16_to_Fp8E5M2_RTNE_SW;
 }
 
@@ -563,8 +563,8 @@ Fp16_to_Fp8E4M3FN_RTNE_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                v);
 }
 
-ConverterT Fp16_to_Fp8E4M3FN_RTNE(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp16_to_Fp8E4M3FN_RTNE_HW
+ConverterT Fp16_to_Fp8E4M3FN_RTNE(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp16_to_Fp8E4M3FN_RTNE_HW
                                             : Fp16_to_Fp8E4M3FN_RTNE_SW;
 }
 
@@ -672,8 +672,8 @@ Fp32_to_Fp8E4M3FN_RTNE_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                v);
 }
 
-ConverterT Fp32_to_Fp8E4M3FN_RTNE(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp32_to_Fp8E4M3FN_RTNE_HW
+ConverterT Fp32_to_Fp8E4M3FN_RTNE(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp32_to_Fp8E4M3FN_RTNE_HW
                                             : Fp32_to_Fp8E4M3FN_RTNE_SW;
 }
 
@@ -764,8 +764,8 @@ Fp32_to_Fp8E5M2_RTNE_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                v);
 }
 
-ConverterT Fp32_to_Fp8E5M2_RTNE(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp32_to_Fp8E5M2_RTNE_HW
+ConverterT Fp32_to_Fp8E5M2_RTNE(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp32_to_Fp8E5M2_RTNE_HW
                                             : Fp32_to_Fp8E5M2_RTNE_SW;
 }
 
@@ -789,8 +789,8 @@ Fp32_to_Fp8E5M2FNUZ_SW(Location loc, ConversionPatternRewriter &rewriter,
   return result;
 }
 
-ConverterT Fp32_to_Fp8E5M2FNUZ(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA3 ? Fp32_to_Fp8E5M2FNUZ_HW
+ConverterT Fp32_to_Fp8E5M2FNUZ(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA3 ? Fp32_to_Fp8E5M2FNUZ_HW
                                             : Fp32_to_Fp8E5M2FNUZ_SW;
 }
 
@@ -814,8 +814,8 @@ Fp32_to_Fp8E4M3FNUZ_SW(Location loc, ConversionPatternRewriter &rewriter,
   return result;
 }
 
-static ConverterT Fp32_to_Fp8E4M3FNUZ(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp32_to_Fp8E4M3FNUZ_SW
+static ConverterT Fp32_to_Fp8E4M3FNUZ(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp32_to_Fp8E4M3FNUZ_SW
                                             : Fp32_to_Fp8E4M3FNUZ_HW;
 }
 
@@ -855,8 +855,8 @@ Fp16_to_Fp8E5M2FNUZ_HW(Location loc, ConversionPatternRewriter &rewriter,
   return cvtPkFp32ToF8<ROCDL::CvtPkBf8F32Op>(loc, rewriter, f32Vec);
 }
 
-ConverterT Fp16_to_Fp8E5M2FNUZ(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA3 ? Fp16_to_Fp8E5M2FNUZ_HW
+ConverterT Fp16_to_Fp8E5M2FNUZ(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA3 ? Fp16_to_Fp8E5M2FNUZ_HW
                                             : Fp16_to_Fp8E5M2FNUZ_SW;
 }
 
@@ -921,8 +921,8 @@ Fp8E4M3FN_to_Fp16_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                v);
 }
 
-ConverterT Fp8E4M3FN_to_Fp16(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp8E4M3FN_to_Fp16_HW
+ConverterT Fp8E4M3FN_to_Fp16(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp8E4M3FN_to_Fp16_HW
                                             : Fp8E4M3FN_to_Fp16_SW;
 }
 
@@ -963,8 +963,8 @@ Fp8E5M2_to_Fp16_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                v);
 }
 
-ConverterT Fp8E5M2_to_Fp16(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp8E5M2_to_Fp16_HW
+ConverterT Fp8E5M2_to_Fp16(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp8E5M2_to_Fp16_HW
                                             : Fp8E5M2_to_Fp16_SW;
 }
 
@@ -1075,9 +1075,9 @@ static SmallVector<Value> Fp32_to_F16_RTNE(Location loc,
                                            ConversionPatternRewriter &rewriter,
                                            Type inElemTy, Type outElemTy,
                                            MultipleOperandsRange operands,
-                                           AMD::ISAFamily isaFamily) {
+                                           HCU::ISAFamily isaFamily) {
   // For CDNA4 we can potentially use packed v_cvt_pk_[b]f16_f32 instructions.
-  if (isaFamily == AMD::ISAFamily::CDNA4) {
+  if (isaFamily == HCU::ISAFamily::CDNA4) {
     SmallVector<Value> inVals;
     size_t numElem = std::min(size_t(2), operands.size());
     inVals.reserve(numElem);
@@ -1151,13 +1151,13 @@ Fp8E5M2FNUZ_to_Fp16_HW(Location loc, ConversionPatternRewriter &rewriter,
 
   // Convert fp32 to fp16
   for (size_t i = 0; i < 4; i++)
-    ret[i] = LLVM::AMD::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, ret[i]);
+    ret[i] = LLVM::HCU::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, ret[i]);
 
   return ret;
 }
 
-ConverterT Fp8E5M2FNUZ_to_Fp16(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA3 ? Fp8E5M2FNUZ_to_Fp16_HW
+ConverterT Fp8E5M2FNUZ_to_Fp16(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA3 ? Fp8E5M2FNUZ_to_Fp16_HW
                                             : Fp8E5M2FNUZ_to_Fp16_SW;
 }
 
@@ -1251,8 +1251,8 @@ Fp8E5M2_to_Bf16_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                 v);
 }
 
-ConverterT Fp8E5M2_to_Bf16(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp8E5M2_to_Bf16_HW
+ConverterT Fp8E5M2_to_Bf16(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp8E5M2_to_Bf16_HW
                                             : Fp8E5M2_to_Bf16_SW;
 }
 
@@ -1341,8 +1341,8 @@ Bf16_to_Fp8E5M2_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                 v);
 }
 
-static ConverterT Bf16_to_Fp8E5M2(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Bf16_to_Fp8E5M2_HW
+static ConverterT Bf16_to_Fp8E5M2(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Bf16_to_Fp8E5M2_HW
                                             : Bf16_to_Fp8E5M2_SW;
 }
 
@@ -1366,8 +1366,8 @@ Bf16_to_Fp8E4M3FN_RTNE_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                 v);
 }
 
-ConverterT Bf16_to_Fp8E4M3FN(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Bf16_to_Fp8E4M3FN_RTNE_HW
+ConverterT Bf16_to_Fp8E4M3FN(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Bf16_to_Fp8E4M3FN_RTNE_HW
                                             : Bf16_to_Fp8E4M3FN_RTNE_SW;
 }
 
@@ -1386,8 +1386,8 @@ Fp8E4M3FN_to_Bf16_HW(Location loc, ConversionPatternRewriter &rewriter,
                                                                 v);
 }
 
-ConverterT Fp8E4M3FN_to_Bf16(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp8E4M3FN_to_Bf16_HW
+ConverterT Fp8E4M3FN_to_Bf16(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp8E4M3FN_to_Bf16_HW
                                             : Fp8E4M3FN_to_Bf16_SW;
 }
 
@@ -1454,8 +1454,8 @@ Fp8E4M3FNUZ_to_Bf16_SW(Location loc, ConversionPatternRewriter &rewriter,
           b.extract_element(bf16_ty, out0, b.i32_val(1))};
 }
 
-static ConverterT Fp8E4M3FNUZ_to_Bf16(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Fp8E4M3FNUZ_to_Bf16_SW
+static ConverterT Fp8E4M3FNUZ_to_Bf16(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Fp8E4M3FNUZ_to_Bf16_SW
                                             : Fp8E4M3FNUZ_to_Bf16_HW;
 }
 
@@ -1481,8 +1481,8 @@ Bf16_to_Fp8E4M3FNUZ_SW(Location loc, ConversionPatternRewriter &rewriter,
   return result;
 }
 
-static ConverterT Bf16_to_Fp8E4M3FNUZ(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Bf16_to_Fp8E4M3FNUZ_SW
+static ConverterT Bf16_to_Fp8E4M3FNUZ(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Bf16_to_Fp8E4M3FNUZ_SW
                                             : Bf16_to_Fp8E4M3FNUZ_HW;
 }
 
@@ -1519,8 +1519,8 @@ Bf16_to_Fp8E5M2FNUZ_SW(Location loc, ConversionPatternRewriter &rewriter,
   return result;
 }
 
-static ConverterT Bf16_to_Fp8E5M2FNUZ(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA4 ? Bf16_to_Fp8E5M2FNUZ_SW
+static ConverterT Bf16_to_Fp8E5M2FNUZ(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA4 ? Bf16_to_Fp8E5M2FNUZ_SW
                                             : Bf16_to_Fp8E5M2FNUZ_HW;
 }
 
@@ -1597,13 +1597,13 @@ Fp8E4M3FNUZ_to_Fp16_HW(Location loc, ConversionPatternRewriter &rewriter,
 
   // Convert fp32 to fp16
   for (size_t i = 0; i < 4; i++)
-    ret[i] = LLVM::AMD::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, ret[i]);
+    ret[i] = LLVM::HCU::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, ret[i]);
 
   return ret;
 }
 
-static ConverterT Fp8E4M3FNUZ_to_Fp16(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA3 ? Fp8E4M3FNUZ_to_Fp16_HW
+static ConverterT Fp8E4M3FNUZ_to_Fp16(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA3 ? Fp8E4M3FNUZ_to_Fp16_HW
                                             : Fp8E4M3FNUZ_to_Fp16_SW;
 }
 
@@ -1631,8 +1631,8 @@ Fp16_to_Fp8E4M3FNUZ_HW(Location loc, ConversionPatternRewriter &rewriter,
   return cvtPkFp32ToF8<ROCDL::CvtPkFp8F32Op>(loc, rewriter, f32Vec);
 }
 
-static ConverterT Fp16_to_Fp8E4M3FNUZ(AMD::ISAFamily isaFamily) {
-  return isaFamily == AMD::ISAFamily::CDNA3 ? Fp16_to_Fp8E4M3FNUZ_HW
+static ConverterT Fp16_to_Fp8E4M3FNUZ(HCU::ISAFamily isaFamily) {
+  return isaFamily == HCU::ISAFamily::CDNA3 ? Fp16_to_Fp8E4M3FNUZ_HW
                                             : Fp16_to_Fp8E4M3FNUZ_SW;
 }
 
@@ -1645,7 +1645,7 @@ struct FpToFpOpConversion
     : public ElementwiseOpConversionBase<triton::FpToFpOp, FpToFpOpConversion> {
   explicit FpToFpOpConversion(LLVMTypeConverter &typeConverter,
                               ModuleAxisInfoAnalysis &axisAnalysisPass,
-                              AMD::ISAFamily isaFamily,
+                              HCU::ISAFamily isaFamily,
                               PatternBenefit benefit = patternBenefitDefault)
       : ElementwiseOpConversionBase(typeConverter, axisAnalysisPass, benefit),
         isaFamily(isaFamily) {}
@@ -1766,9 +1766,9 @@ struct FpToFpOpConversion
          roundingMode == RoundingMode::RTZ) ||
         (llvm::isa<Float32Type, Float16Type>(srcElementType) &&
          llvm::isa<Float8E4M3FNUZType, Float8E5M2FNUZType>(dstElementType) &&
-         isaFamily != AMD::ISAFamily::CDNA3) ||
+         isaFamily != HCU::ISAFamily::CDNA3) ||
         (llvm::isa<Float8E4M3FNUZType>(srcElementType) &&
-         dstElementType.isBF16() && isaFamily == AMD::ISAFamily::CDNA4))
+         dstElementType.isBF16() && isaFamily == HCU::ISAFamily::CDNA4))
       numElements = 2;
 
     // fp32 -> fp8 with rtne can be done in two steps:
@@ -1781,13 +1781,13 @@ struct FpToFpOpConversion
     bool useFP16IntermediateSrc =
         srcElementType.isF32() && !dstElementType.isF16() &&
         roundingMode == RoundingMode::RTNE &&
-        !(isaFamily == AMD::ISAFamily::CDNA4 &&
+        !(isaFamily == HCU::ISAFamily::CDNA4 &&
           (llvm::isa<Float8E4M3FNType, Float8E4M3FNUZType, Float8E5M2Type,
                      Float8E5M2FNUZType>(dstElementType))) &&
-        !(isaFamily == AMD::ISAFamily::CDNA3 &&
+        !(isaFamily == HCU::ISAFamily::CDNA3 &&
           (llvm::isa<Float8E4M3FNUZType, Float8E5M2FNUZType>(
               dstElementType))) &&
-        !(isaFamily != AMD::ISAFamily::CDNA4 &&
+        !(isaFamily != HCU::ISAFamily::CDNA4 &&
           (llvm::isa<Float8E5M2Type, Float8E4M3FNType>(dstElementType)));
 
     // fp8/bf8->f32, if neither nanoo fp8/bf8 on CDNA3 nor ocp fp8/bf8 on CDNA4,
@@ -1795,9 +1795,9 @@ struct FpToFpOpConversion
     bool isDstFP32 = dstElementType.isF32();
     bool useFP16IntermediateDst =
         (isDstFP32 &&
-         !(isaFamily == AMD::ISAFamily::CDNA4 &&
+         !(isaFamily == HCU::ISAFamily::CDNA4 &&
            (llvm::isa<Float8E4M3FNType, Float8E5M2Type>(srcElementType))) &&
-         !(isaFamily == AMD::ISAFamily::CDNA3 &&
+         !(isaFamily == HCU::ISAFamily::CDNA3 &&
            (llvm::isa<Float8E4M3FNUZType, Float8E5M2FNUZType>(
                srcElementType))));
 
@@ -1822,18 +1822,18 @@ struct FpToFpOpConversion
       return outVals;
     }
     if (useFP16IntermediateSrc) {
-      if (isaFamily == AMD::ISAFamily::CDNA4)
+      if (isaFamily == HCU::ISAFamily::CDNA4)
         inVals = convertFp32ToFp16RTNE(loc, rewriter, inVals, f16_ty);
       else {
         for (Value &v : inVals)
-          v = LLVM::AMD::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, v);
+          v = LLVM::HCU::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, v);
       }
     }
 
     if (dstType.isFloat() && (dstType.getIntOrFloatBitWidth() == 8)) {
       auto func = op->getParentOfType<LLVM::LLVMFuncOp>();
       if (func) {
-        using attrType = triton::amdgpu::SetFP8ClampingAttr;
+        using attrType = triton::hcugpu::SetFP8ClampingAttr;
         auto attrName = attrType::getMnemonic();
         if (!func->hasAttrOfType<attrType>(attrName)) {
           func->setAttr(attrName, attrType::get(op->getContext()));
@@ -1871,7 +1871,7 @@ struct FpToFpOpConversion
   }
 
 private:
-  AMD::ISAFamily isaFamily;
+  HCU::ISAFamily isaFamily;
 };
 
 template <typename OP>
@@ -1903,7 +1903,7 @@ struct FMulOpConversion
 
   explicit FMulOpConversion(LLVMTypeConverter &typeConverter,
                             ModuleAxisInfoAnalysis &axisAnalysisPass,
-                            AMD::ISAFamily isaFamily,
+                            HCU::ISAFamily isaFamily,
                             PatternBenefit benefit = patternBenefitDefault)
       : ElementwiseOpConversionBase(typeConverter, axisAnalysisPass, benefit),
         isaFamily(isaFamily) {}
@@ -1938,7 +1938,7 @@ struct FMulOpConversion
   }
 
 private:
-  AMD::ISAFamily isaFamily;
+  HCU::ISAFamily isaFamily;
 };
 
 struct FAddOpConversion
@@ -2061,7 +2061,7 @@ struct TruncFOpConversion
 
   explicit TruncFOpConversion(LLVMTypeConverter &typeConverter,
                               ModuleAxisInfoAnalysis &axisAnalysisPass,
-                              AMD::ISAFamily isaFamily,
+                              HCU::ISAFamily isaFamily,
                               PatternBenefit benefit = patternBenefitDefault)
       : ElementwiseOpConversionBase(typeConverter, axisAnalysisPass, benefit),
         isaFamily(isaFamily) {}
@@ -2080,7 +2080,7 @@ struct TruncFOpConversion
   }
 
 private:
-  AMD::ISAFamily isaFamily;
+  HCU::ISAFamily isaFamily;
 };
 
 struct ExpOpConversionApprox
@@ -2127,7 +2127,7 @@ struct Exp2OpConversion
     if (elemTy.getIntOrFloatBitWidth() != 32)
       return {};
 
-    // On AMD backend, both intrinsics are lowered to v_exp_f32 instruction,
+    // On HCU backend, both intrinsics are lowered to v_exp_f32 instruction,
     // which flushes input and output denorms. `llvm.amdgcn.exp2.f32` provides
     // direct access to v_exp_f32. For `llvm.exp2.f32`, the LLVM backend inserts
     // instructions to handle denorms iff `allow_flush_denorm` is False.
@@ -2216,7 +2216,7 @@ struct SqrtOpConversion
     // This function only handles FP32 inputs. Other data types are lowered to
     // LLVM::SqrtOp by MLIR.
     //
-    // On the AMDGPU backend, instructions legalized from LLVM::SqrtOp are
+    // On the HCUGPU backend, instructions legalized from LLVM::SqrtOp are
     // designed to produce IEEE-compliant results and always preserve denorms.
     // But what we actually need is an approximated SQRT. So we need to manually
     // lower the op.
@@ -2238,7 +2238,7 @@ struct SqrtOpConversion
       //
       // The result is then scaled down afterward to get the correct result.
       // Reference:
-      // https://github.com/llvm/llvm-project/blob/0876c11c/llvm/lib/Target/AMDGPU/AMDGPULegalizerInfo.cpp#L5235-L5314.
+      // https://github.com/llvm/llvm-project/blob/0876c11c/llvm/lib/Target/HCUGPU/HCUGPULegalizerInfo.cpp#L5235-L5314.
       std::tie(needScale, scaledSrc) = scaleUpIfDenorm(
           rewriter, loc, operands[0][0], 0x1.0p-96f, 0x1.0p+32f);
     }
@@ -2289,9 +2289,9 @@ struct PreciseSqrtOpConversion
                                    adaptor.getAttributes().getValue())};
     }
 
-    // On the AMDGPU backend, instructions legalized from LLVM::SqrtOp are
+    // On the HCUGPU backend, instructions legalized from LLVM::SqrtOp are
     // designed to always preserve denorms, according to
-    // https://github.com/llvm/llvm-project/blob/3d6b2d49/llvm/lib/Target/AMDGPU/AMDGPULegalizerInfo.cpp#L5235-L5314.
+    // https://github.com/llvm/llvm-project/blob/3d6b2d49/llvm/lib/Target/HCUGPU/HCUGPULegalizerInfo.cpp#L5235-L5314.
     //
     // For f32 inputs with ftz enabled, we need to manually lower the op to
     // bypass the scaling-up-and-down process while keeping other parts
@@ -2336,7 +2336,7 @@ private:
 };
 } // namespace
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 void adjustModeRegister(ModuleOp mod, const TargetInfo &targetInfo) {
   MLIRContext *ctx = mod->getContext();
   Location loc = mod->getLoc();
@@ -2344,7 +2344,7 @@ void adjustModeRegister(ModuleOp mod, const TargetInfo &targetInfo) {
   auto auxBuilder = TritonLLVMOpBuilder(loc, builder);
 
   mod->walk([&](LLVM::LLVMFuncOp func) {
-    using attrType = triton::amdgpu::SetFP8ClampingAttr;
+    using attrType = triton::hcugpu::SetFP8ClampingAttr;
     auto attrName = attrType::getMnemonic();
     if (!func->hasAttrOfType<attrType>(attrName))
       return;
@@ -2420,4 +2420,4 @@ void populateElementwiseOpToLLVMPatterns(
   triton::populateClampFOpToLLVMPattern(typeConverter, patterns,
                                         axisInfoAnalysis, targetInfo, benefit);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

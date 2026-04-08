@@ -1,7 +1,7 @@
-#include "TritonAMDGPUTransforms/Passes.h"
-#include "amd/lib/TritonAMDGPUToLLVM/AsyncUtility.h"
-#include "amd/lib/TritonAMDGPUToLLVM/TargetInfo.h"
-#include "third_party/amd/include/Analysis/AxisInfoExt.h"
+#include "TritonHCUGPUTransforms/Passes.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/AsyncUtility.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/TargetInfo.h"
+#include "third_party/hcu/include/Analysis/AxisInfoExt.h"
 #include "triton/Analysis/AxisInfo.h"
 #include "triton/Dialect/Triton/IR/OpInterfaces.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
@@ -24,18 +24,18 @@
 // expander to generate the prologue and new loop and epilogue.
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "tritonamdgpu-mls-stream-pipeline"
+#define DEBUG_TYPE "tritonhcugpu-mls-stream-pipeline"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
 namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
-namespace tta = mlir::triton::amdgpu;
+namespace tta = mlir::triton::hcugpu;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUMLSSTREAMPIPELINE
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUMLSSTREAMPIPELINE
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -117,7 +117,7 @@ struct LoadInfo {
   int distToUse = 0;
   Operation *use = nullptr;
 
-  ttg::AMDMlsSharedEncodingAttr mlsEncoding = nullptr;
+  ttg::HCUMlsSharedEncodingAttr mlsEncoding = nullptr;
   bool isMatrixLoad = false;
 
   LoadInfo() = default;
@@ -125,7 +125,7 @@ struct LoadInfo {
            int distToUse, Operation *use)
       : sharedEncoding(sharedEncoding), distToUse(distToUse),
         use(use) {}
-  LoadInfo(ttg::AMDMlsSharedEncodingAttr mlsEncoding,
+  LoadInfo(ttg::HCUMlsSharedEncodingAttr mlsEncoding,
            int distToUse, Operation *use)
       : mlsEncoding(mlsEncoding), distToUse(distToUse),
         use(use), isMatrixLoad(true) {}
@@ -237,7 +237,7 @@ StreamCopyChainOps createStreamCopy(tt::LoadOp loadOp, Value alloc,
 
 // Returns the given |inputValue|'s dot user result encoding and updates |opIdx|
 // with which dot operand |inputValue| is fed into if possible.
-ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx) {
+ttg::HCUMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx) {
   if (!inputValue.hasOneUse())
     return nullptr;
 
@@ -250,14 +250,14 @@ ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx) {
     OpOperand &use = *inputValue.getUses().begin();
     *opIdx = use.getOperandNumber();
     auto dotType = cast<RankedTensorType>(dotOp->getResult(0).getType());
-    return dyn_cast<ttg::AMDMfmaEncodingAttr>(dotType.getEncoding());
+    return dyn_cast<ttg::HCUMfmaEncodingAttr>(dotType.getEncoding());
   }
   return getDotEncoding(user->getResult(0), opIdx);
 }
 
 // Adapted from
 // lib/Dialect/TritonGPU/Transforms/Utility.cpp::getSharedEncIfAllUsersAreDotEnc
-// to support AMDMfmaEncodingAttr.
+// to support HCUMfmaEncodingAttr.
 // TODO(max): figure out how to refactor to use upstream
 //
 // If all the transitive uses of the given value have are used by a convert to
@@ -331,13 +331,13 @@ getSharedEncIfAllUsersAreDotEnc(Value loadedValue) {
   return attr;
 }
 
-std::optional<ttg::AMDMlsSharedEncodingAttr>
+std::optional<ttg::HCUMlsSharedEncodingAttr>
 getMlsEncIfAllUsersAreDotEnc(Value val) {
   auto matrixOp = cast<tt::MatrixLoadOp>(val.getDefiningOp());
   auto matrixTy = cast<RankedTensorType>(matrixOp.getType());
   auto mlsAttr = matrixOp->getAttrOfType<tta::MlsEncodingAttr>(tta::MlsEncodingAttr::getMnemonic());
   auto ctaLayout = ttg::getCTALayout(matrixTy.getEncoding());
-  auto attr = ttg::AMDMlsSharedEncodingAttr::get(
+  auto attr = ttg::HCUMlsSharedEncodingAttr::get(
                             matrixOp.getContext(), mlsAttr.getOpIdx(), mlsAttr.getMlsTile(),
                             mlsAttr.getElemBitWidth(), mlsAttr.getAlt2Kind(),
                             mlsAttr.getVersion(), mlsAttr.getOrder(),
@@ -348,7 +348,7 @@ getMlsEncIfAllUsersAreDotEnc(Value val) {
 bool canBeConvertedToAsyncLoad(unsigned numBuffers, tt::LoadOp loadOp,
                                Value alloc,
                                tt::ModuleAxisInfoAnalysis &axisInfoAnalysis,
-                               const tt::AMD::TargetInfo &targetInfo) {
+                               const tt::HCU::TargetInfo &targetInfo) {
   // If we have a single buffer we would require another barrier after the
   // local_reads so instead we fall back to pipeline with registers
   // Removing this check will create incorrect IR, see
@@ -437,7 +437,7 @@ createStreamOps(const LoadToInfoMap &loadToInfo, scf::ForOp &forOp,
     }
     assert(alloc && "Failed to create alloc for the async load.");
     // auto arch = getAMDArch(loadOp->getParentOfType<ModuleOp>());
-    // triton::AMD::TargetInfo targetInfo(arch ? arch->str() : "");
+    // triton::HCU::TargetInfo targetInfo(arch ? arch->str() : "");
 
     // Replace the old load with multi-buffered loads
     if (isLoadOp) {
@@ -547,15 +547,15 @@ loadOpsToIndirectionLevel(scf::ForOp forOp, bool pipelineWithoutDot,
 }
 
 LoadToInfoMap
-preprocessLoop(triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis,
+preprocessLoop(triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                scf::ForOp &forOp, int numStages) {
   auto arch = getAMDArch(forOp->getParentOfType<ModuleOp>());
-  triton::AMD::ISAFamily isaFamily = triton::AMD::ISAFamily::Unknown;
+  triton::HCU::ISAFamily isaFamily = triton::HCU::ISAFamily::Unknown;
   if (arch)
-    isaFamily = triton::AMD::deduceISAFamily(*arch);
+    isaFamily = triton::HCU::deduceISAFamily(*arch);
 
   bool pipelineWithoutDot = forOp->hasAttr(mlir::triton::kNumStagesAttrName);
-  bool filterSmallVectors = isaFamily != triton::AMD::ISAFamily::CDNA4;
+  bool filterSmallVectors = isaFamily != triton::HCU::ISAFamily::CDNA4;
   llvm::MapVector<Operation *, std::pair<int, Operation *>> loadOpToIndLevel =
       loadOpsToIndirectionLevel(forOp, pipelineWithoutDot,
                                 axisInfoAnalysis, numStages,
@@ -1001,7 +1001,7 @@ buildSchedule(scf::ForOp &forOp, int numStages, const LoadToInfoMap &loadToInfo,
               int globalPrefetch, int localPrefetch, bool useAsyncCopy,
               bool waitAtTail,
               bool asyncCopySingleBuffer,
-              triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis) {
+              triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis) {
   tt::CoarseSchedule schedule(numStages);
   Stages stages;
   Clusters clusters;
@@ -1066,7 +1066,7 @@ FailureOr<scf::ForOp> pipelineLoop(scf::ForOp forOp, int numStages,
                                    bool useAsyncCopy, bool waitAtTail,
                                    bool asyncCopySingleBuffer) {
 
-  triton::AMD::ModuleAxisInfoAnalysis axisInfoAnalysis(
+  triton::HCU::ModuleAxisInfoAnalysis axisInfoAnalysis(
       forOp->getParentOfType<ModuleOp>());
 
   LoadToInfoMap loadToInfo = preprocessLoop(axisInfoAnalysis, forOp, numStages);
@@ -1103,7 +1103,7 @@ FailureOr<scf::ForOp> pipelineLoop(scf::ForOp forOp, int numStages,
       return;
 
     auto annotateLoad = [](Operation *loadOp) {
-      loadOp->setAttr("amd.pipeliner_part",
+      loadOp->setAttr("hcu.pipeliner_part",
                       StringAttr::get(loadOp->getContext(), "prologue"));
     };
 
@@ -1143,7 +1143,7 @@ bool skipLoopWithOutMatrixLoadOp(scf::ForOp forOp) {
 
 } // namespace
 
-struct MlsPipelinePass : impl::TritonAMDGPUMlsStreamPipelineBase<MlsPipelinePass> {
+struct MlsPipelinePass : impl::TritonHCUGPUMlsStreamPipelineBase<MlsPipelinePass> {
   using Base::Base;
 
   void runOnOperation() override {

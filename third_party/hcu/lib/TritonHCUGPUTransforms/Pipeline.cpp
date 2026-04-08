@@ -1,8 +1,8 @@
-#include "TritonAMDGPUTransforms/Passes.h"
-#include "amd/lib/TritonAMDGPUTransforms/PipelineUtility.h"
+#include "TritonHCUGPUTransforms/Passes.h"
+#include "hcu/lib/TritonHCUGPUTransforms/PipelineUtility.h"
 #include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 
-#define DEBUG_TYPE "tritonamdgpu-pipeline-expand-loops"
+#define DEBUG_TYPE "tritonhcugpu-pipeline-expand-loops"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
@@ -10,8 +10,8 @@ namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
 
 namespace mlir {
-#define GEN_PASS_DEF_TRITONAMDGPUPIPELINE
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUPIPELINE
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 Operation *streamPredication(RewriterBase &rewriter, Operation *op,
@@ -58,7 +58,7 @@ void expandLoops(ModuleOp moduleOp) {
         return;
 
       auto annotateLoad = [](Operation *loadOp) {
-        loadOp->setAttr("amd.pipeliner_part",
+        loadOp->setAttr("hcu.pipeliner_part",
                         StringAttr::get(loadOp->getContext(), "prologue"));
       };
 
@@ -98,7 +98,7 @@ void expandLoops(ModuleOp moduleOp) {
 }
 } // namespace
 
-struct PipelinePass : impl::TritonAMDGPUPipelineBase<PipelinePass> {
+struct PipelinePass : impl::TritonHCUGPUPipelineBase<PipelinePass> {
   using Base::Base;
 
   void runOnOperation() override {

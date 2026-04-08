@@ -10,12 +10,12 @@
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
-#include "TritonAMDGPUTransforms/MfmaGroup.h"
-#include "TritonAMDGPUTransforms/MlsGroup.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUTransforms/MfmaGroup.h"
+#include "TritonHCUGPUTransforms/MlsGroup.h"
 #include "triton/Analysis/Utility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "Utility.h"
 
 using namespace mlir;
@@ -58,7 +58,7 @@ FailureOr<MlsInsn> chooseMlsInstruction(tt::DotOp dot, int opIdx,
   auto aType = dot.getA().getType();
   auto bType = dot.getB().getType();
   auto dType = dot.getResult().getType();
-  auto mfmaEncoding = dyn_cast<ttg::AMDMfmaEncodingAttr>(dType.getEncoding());
+  auto mfmaEncoding = dyn_cast<ttg::HCUMfmaEncodingAttr>(dType.getEncoding());
 
   // get the mls shape info
   auto rank = matrixOp.getType().getRank();
@@ -145,7 +145,7 @@ public:
       auto opIdx = maybeDotOpIdxPair.value().second;
 
       // 1. choose the mls instruction for matrixOp
-      assert(isa<ttg::AMDMfmaEncodingAttr>(dotOp.getType().getEncoding()));
+      assert(isa<ttg::HCUMfmaEncodingAttr>(dotOp.getType().getEncoding()));
       auto order = getMatrixLoadTensorOrder(matrixOp, opIdx);
       bool kMajor = opIdx == 0 ? order[0] == 1 : order[0] == 0;
       auto numWarps = triton::gpu::lookupNumWarps(matrixOp);
@@ -180,11 +180,11 @@ public:
                               matrixOp.getStrides(), matrixOp.getTensorShape(), matrixOp.getIndices(),
                               matrixOp.getBoundaryCheck(), matrixOp.getCache(), matrixOp.getEvict(),
                               matrixOp.getIsVolatile());
-      auto mlsEncoding = triton::amdgpu::MlsEncodingAttr::get(
+      auto mlsEncoding = triton::hcugpu::MlsEncodingAttr::get(
                                                           matrixOp.getContext(), opIdx, mlsTile,
                                                           elemBitWidth, altKind, version,
                                                           order, warpsPerCTA);
-      newMatrixOp->setAttr(triton::amdgpu::MlsEncodingAttr::getMnemonic(), mlsEncoding);
+      newMatrixOp->setAttr(triton::hcugpu::MlsEncodingAttr::getMnemonic(), mlsEncoding);
 
       // 4. replace the original op
       auto convertedTensor = convertAndCastTensor(rewriter, newMatrixOp.getResult(), matrixOp.getType().getEncoding());
@@ -264,7 +264,7 @@ public:
 
       SmallVector<unsigned> warpsPerCTAMfma = warpsPerCTAMatrixLoad(shape, mfmaTiles, mfmaOrder, numWarps);
       unsigned mfmaElementBitWidth = elemType.isF64() ? 64 : 32;
-      auto mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
+      auto mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
         matrixOp.getContext(),
         /*versionMajor*/ mfmaVersion,
         warpsPerCTAMfma,
@@ -293,11 +293,11 @@ public:
                               matrixOp.getStrides(), matrixOp.getTensorShape(), matrixOp.getIndices(),
                               matrixOp.getBoundaryCheck(), matrixOp.getCache(), matrixOp.getEvict(),
                               matrixOp.getIsVolatile());
-      auto mlsEncoding = triton::amdgpu::MlsEncodingAttr::get(
+      auto mlsEncoding = triton::hcugpu::MlsEncodingAttr::get(
                                                           matrixOp.getContext(), opIdx, mlsTile,
                                                           elemBitWidth, static_cast<unsigned>(altKind), version,
                                                           order, warpsPerCTA);
-      newMatrixOp->setAttr(triton::amdgpu::MlsEncodingAttr::getMnemonic(), mlsEncoding);
+      newMatrixOp->setAttr(triton::hcugpu::MlsEncodingAttr::getMnemonic(), mlsEncoding);
 
       // 5. replace the original op
       auto convertedTensor = convertAndCastTensor(rewriter,
@@ -318,15 +318,15 @@ public:
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUMLSENCODINGINSERTION
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUMLSENCODINGINSERTION
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
-class TritonAMDGPUMlsEncodingInsertionPass
-    : public impl::TritonAMDGPUMlsEncodingInsertionBase<
-          TritonAMDGPUMlsEncodingInsertionPass> {
+class TritonHCUGPUMlsEncodingInsertionPass
+    : public impl::TritonHCUGPUMlsEncodingInsertionBase<
+          TritonHCUGPUMlsEncodingInsertionPass> {
 public:
-  using impl::TritonAMDGPUMlsEncodingInsertionBase<
-      TritonAMDGPUMlsEncodingInsertionPass>::TritonAMDGPUMlsEncodingInsertionBase;
+  using impl::TritonHCUGPUMlsEncodingInsertionBase<
+      TritonHCUGPUMlsEncodingInsertionPass>::TritonHCUGPUMlsEncodingInsertionBase;
 
   void runOnOperation() override {
     MLIRContext *context = &getContext();

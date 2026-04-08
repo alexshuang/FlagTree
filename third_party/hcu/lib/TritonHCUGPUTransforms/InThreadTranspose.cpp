@@ -1,5 +1,5 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
@@ -12,20 +12,20 @@
 // tt.load->ttg.local_store->ttg.local_load chains.
 //
 // For details please look pass description in
-// TritonAMDGPUTransforms/Passes.td
+// TritonHCUGPUTransforms/Passes.td
 
-#define DEBUG_TYPE "tritonamdgpu-in-thread-transpose"
+#define DEBUG_TYPE "tritonhcugpu-in-thread-transpose"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
 namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
-namespace ttag = mlir::triton::amdgpu;
+namespace ttag = mlir::triton::hcugpu;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUINTHREADTRANSPOSE
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUINTHREADTRANSPOSE
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -124,7 +124,7 @@ Attribute createNewSharedEncoding(RankedTensorType operandType) {
   auto perPhase = tempAttr.getPerPhase();
   auto maxPhase = tempAttr.getMaxPhase();
 
-  auto newSharedEnc = ttg::AMDRotatingSharedEncodingAttr::get(
+  auto newSharedEnc = ttg::HCURotatingSharedEncodingAttr::get(
       ctx, sharedVec, perPhase, maxPhase, order, ctaLayout);
 
   return newSharedEnc;
@@ -514,7 +514,7 @@ findReachableSMemOps(ttg::LocalLoadOp root) {
       } else if (isa<ttg::LocalLoadOp, ttg::LocalDeallocOp>(candidate)) {
         smemOperand = candidate->getOperand(0);
       } else if (isa<ttg::AsyncCopyGlobalToLocalOp,
-                     tt::amdgpu::BufferLoadToLocalOp>(candidate)) {
+                     tt::hcugpu::BufferLoadToLocalOp>(candidate)) {
         // InTheadTranspose cannot be used with direct-to-lds loads
         LDBG(" skip because of direct-to-lds load");
         return failure();
@@ -591,7 +591,7 @@ matchInThreadTransposePattern(ttg::LocalLoadOp lLoad) {
 
   int kDimNum = opDotOpEnc.getOpIdx() == 0 ? 1 : 0;
   // TODO: support wmma
-  if (!isa<ttg::AMDMfmaEncodingAttr, ttg::AMDWmmaEncodingAttr>(
+  if (!isa<ttg::HCUMfmaEncodingAttr, ttg::HCUWmmaEncodingAttr>(
           opDotOpEnc.getParent())) {
     LDBG("Operand's parent encoding is not MFMA");
     return failure();
@@ -781,9 +781,9 @@ public:
 
 } // anonymous namespace
 
-class TritonAMDGPUInThreadTransposePass
-    : public impl::TritonAMDGPUInThreadTransposeBase<
-          TritonAMDGPUInThreadTransposePass> {
+class TritonHCUGPUInThreadTransposePass
+    : public impl::TritonHCUGPUInThreadTransposeBase<
+          TritonHCUGPUInThreadTransposePass> {
 
 public:
   void runOnOperation() override {

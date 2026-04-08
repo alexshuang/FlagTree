@@ -1,11 +1,11 @@
 add_triton_library(TritonAMDAnalysis
   RangeAnalysis.cpp
   AxisInfoExt.cpp
-  AMDGPUAllocation.cpp
+  HCUGPUAllocation.cpp
 
   DEPENDS
   TritonTableGen
-  TritonAMDGPUTableGen
+  TritonHCUGPUTableGen
 
   LINK_LIBS PUBLIC
   MLIRAnalysis

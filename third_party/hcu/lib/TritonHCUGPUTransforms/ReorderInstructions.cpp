@@ -1,11 +1,11 @@
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/Utility/CommonUtils.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/Utility/CommonUtils.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
@@ -15,8 +15,8 @@ namespace ttg = mlir::triton::gpu;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUREORDERINSTRUCTIONS
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUREORDERINSTRUCTIONS
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -169,7 +169,7 @@ static void moveUpGlobalLoadInPrologue(triton::FuncOp funcOp) {
   // Avoid moving up global_load ops that don't belong to any prologue to avoid
   // extra register pressure.
   llvm::erase_if(globalLoadOps, [](triton::LoadOp op) {
-    return !op->getAttr("amd.pipeliner_part");
+    return !op->getAttr("hcu.pipeliner_part");
   });
 
   for (auto op : llvm::reverse(globalLoadOps)) {
@@ -302,9 +302,9 @@ static void sinkSecondLoad(scf::ForOp forOp) {
 // Pass definition
 //===----------------------------------------------------------------------===//
 
-struct TritonAMDGPUReorderInstructionsPass
-    : public impl::TritonAMDGPUReorderInstructionsBase<
-          TritonAMDGPUReorderInstructionsPass> {
+struct TritonHCUGPUReorderInstructionsPass
+    : public impl::TritonHCUGPUReorderInstructionsBase<
+          TritonHCUGPUReorderInstructionsPass> {
   void runOnOperation() override {
     ModuleOp m = getOperation();
     for (auto funcOp : m.getOps<triton::FuncOp>()) {
@@ -317,7 +317,7 @@ struct TritonAMDGPUReorderInstructionsPass
       if (isPureMatmulFunc(funcOp)) {
         funcOp.walk([&](scf::ForOp forOp) -> void { sinkSecondLoad(forOp); });
       } else {
-        SmallVector<scf::ForOp> leafForOps = triton::AMD::getLeafForOps(funcOp);
+        SmallVector<scf::ForOp> leafForOps = triton::HCU::getLeafForOps(funcOp);
         for (auto forOp : leafForOps) {
           if (isPureMatmulLoop(forOp)) {
             sinkSecondLoad(forOp);

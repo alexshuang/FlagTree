@@ -21,7 +21,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
@@ -31,8 +31,8 @@
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUOPTIMIZEEPILOGUE
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUOPTIMIZEEPILOGUE
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 namespace {
 
@@ -199,9 +199,9 @@ public:
 
 } // anonymous namespace
 
-class TritonAMDGPUOptimizeEpiloguePass
-    : public impl::TritonAMDGPUOptimizeEpilogueBase<
-          TritonAMDGPUOptimizeEpiloguePass> {
+class TritonHCUGPUOptimizeEpiloguePass
+    : public impl::TritonHCUGPUOptimizeEpilogueBase<
+          TritonHCUGPUOptimizeEpiloguePass> {
 
 public:
   void runOnOperation() override {

@@ -1,12 +1,12 @@
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
-#include "TritonAMDGPUTransforms/MfmaGroup.h"
-#include "TritonAMDGPUTransforms/Passes.h"
-#include "TritonAMDGPUTransforms/WmmaGroup.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUTransforms/MfmaGroup.h"
+#include "TritonHCUGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/WmmaGroup.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "third_party/amd/lib/TritonAMDGPUToLLVM/Utility.h"
+#include "third_party/hcu/lib/TritonHCUGPUToLLVM/Utility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -18,8 +18,8 @@
 
 namespace tt = mlir::triton;
 namespace ttg = mlir::triton::gpu;
-using ::mlir::LLVM::AMD::isChainDotHead;
-using ::mlir::LLVM::AMD::isChainDotTail;
+using ::mlir::LLVM::HCU::isChainDotHead;
+using ::mlir::LLVM::HCU::isChainDotTail;
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "tritonamd-accelerate-matmul"
@@ -27,10 +27,10 @@ using ::mlir::LLVM::AMD::isChainDotTail;
 namespace mlir {
 
 namespace {
-using triton::AMD::ISAFamily;
+using triton::HCU::ISAFamily;
 
 constexpr char AttrDecomposedDotScaledSource[] =
-    "amdg.decomposed_dot_scaled_source";
+    "hcug.decomposed_dot_scaled_source";
 
 int getMfmaVersion(ISAFamily isaFamily) {
   switch (isaFamily) {
@@ -247,7 +247,7 @@ FailureOr<MfmaIntrinsic> chooseMfmaInstruction(tt::DotOp dot, int mfmaVersion,
 
 FailureOr<MfmaIntrinsic> chooseMfmaInstruction(tt::DotScaledOp dot,
                                                int mfmaVersion, int nonKDim) {
-  using ::mlir::LLVM::AMD::scaleDotElemTypeToMLIRType;
+  using ::mlir::LLVM::HCU::scaleDotElemTypeToMLIRType;
 
   auto ctx = dot.getContext();
   int64_t inputKDim = dot.getA().getType().getShape().back();
@@ -664,7 +664,7 @@ public:
       tilesPerWarp.insert(tilesPerWarp.begin(), 1);
     }
 
-    ttg::AMDMfmaEncodingAttr mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
+    ttg::HCUMfmaEncodingAttr mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
         oldRetType.getContext(), mfmaVersion, warpsPerTile, {mDim, nDim, kDim},
         isTransposed, CTALayout, tilesPerWarp,
         mfmaAccType.getIntOrFloatBitWidth());
@@ -854,7 +854,7 @@ public:
     // Always use transposed mfma layout. This enables larger vectorization
     // for global store instructions.
     auto elementBitWidth = oldRetType.getElementType().getIntOrFloatBitWidth();
-    auto mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
+    auto mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
         ctx, mfmaVersion, mfmaWarpsPerCTA, {mDim, nDim, kDim},
         /*isTransposed=*/true, ctaLayout, {}, elementBitWidth);
 
@@ -920,8 +920,8 @@ public:
       // TODO: Emit device assert to check scale tensor range fitting into fp16?
       Type outputElemType = useFp16 ? b.getF16Type() : b.getBF16Type();
       auto outputType =
-          amdgpu::UpcastMXFPOp::deduceOutputType(v, elemType, outputElemType);
-      return amdgpu::UpcastMXFPOp::create(rewriter, dotOp.getLoc(), outputType,
+          hcugpu::UpcastMXFPOp::deduceOutputType(v, elemType, outputElemType);
+      return hcugpu::UpcastMXFPOp::create(rewriter, dotOp.getLoc(), outputType,
                                           v, convOp, elemType, fastMath);
     };
 
@@ -1001,10 +1001,10 @@ public:
     // 4) Upcast with scale
     TensorValue result;
     if (isFp4) {
-      result = triton::amdgpu::ScaledUpcastFp4Op::create(
+      result = triton::hcugpu::ScaledUpcastFp4Op::create(
           rewriter, loc, scaleType16, v, reshapeScale, kDim);
     } else {
-      result = triton::amdgpu::ScaledUpcastFp8Op::create(
+      result = triton::hcugpu::ScaledUpcastFp8Op::create(
           rewriter, loc, scaleType16, v, reshapeScale);
     }
 
@@ -1097,7 +1097,7 @@ public:
     // Always use transposed mfma layout. This enables larger vectorization
     // for global store instructions.
     auto elementBitWidth = oldRetType.getElementType().getIntOrFloatBitWidth();
-    mlir::Attribute mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
+    mlir::Attribute mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
         ctx, mfmaVersion, warpsPerTile, {mDim, nDim, kDim},
         /*isTransposed=*/true, ctaLayout, tilesPerWarp, elementBitWidth);
 
@@ -1159,7 +1159,7 @@ public:
             sharedMemorySpace);
         auto tmp = triton::gpu::LocalAllocOp::create(builder, dotOp.getLoc(),
                                                      tmpType, v);
-        auto newConvert = triton::amdgpu::LocalLoadPackedTransposedOp::create(
+        auto newConvert = triton::hcugpu::LocalLoadPackedTransposedOp::create(
             builder, dotOp.getLoc(), newVType, tmp);
         if (opIdx == 0) {
           aShape = newConvert.getType().getShape();
@@ -1292,10 +1292,10 @@ public:
     auto warpsPerTile =
         warpsPerTileWMMA(dotOp, oldShape, numWarps, {mDim, nDim});
 
-    auto wmmaEnc = ttg::AMDWmmaEncodingAttr::get(
+    auto wmmaEnc = ttg::HCUWmmaEncodingAttr::get(
         ctx, wmmaVersion, true, warpsPerTile, ctaLayout, {mDim, nDim, kDim});
     auto wmmaPackedEnc =
-        ttg::AMDWmmaEncodingAttr::get(ctx, wmmaVersion, true, warpsPerTile,
+        ttg::HCUWmmaEncodingAttr::get(ctx, wmmaVersion, true, warpsPerTile,
                                       ctaLayout, {mDim, nDim, kDim / 2});
 
     auto newRetType =
@@ -1399,7 +1399,7 @@ static void decomposeMixedModeDotOp(ModuleOp mod) {
     OpBuilder builder(dotOp);
     Type AElType = dotOp.getA().getType().getElementType();
     Type promoteType;
-    if (isa<ttg::AMDMfmaEncodingAttr>(D.getType().getEncoding())) {
+    if (isa<ttg::HCUMfmaEncodingAttr>(D.getType().getEncoding())) {
       Type BElType = dotOp.getB().getType().getElementType();
 
       auto maxBitWidth = std::max(AElType.getIntOrFloatBitWidth(),
@@ -1416,7 +1416,7 @@ static void decomposeMixedModeDotOp(ModuleOp mod) {
         promoteType = builder.getF16Type();
       else if (maxBitWidth <= 32)
         promoteType = builder.getF32Type();
-    } else if (isa<ttg::AMDWmmaEncodingAttr>(D.getType().getEncoding())) {
+    } else if (isa<ttg::HCUWmmaEncodingAttr>(D.getType().getEncoding())) {
       Type BElType = dotOp.getB().getType().getElementType();
 
       if (AElType == BElType)
@@ -1543,7 +1543,7 @@ public:
     // get WMMA encoding for the given number of warps
     int numWarps = ttg::lookupNumWarps(dotOp);
 
-    ttg::AMDWmmaEncodingAttr wmmaEnc;
+    ttg::HCUWmmaEncodingAttr wmmaEnc;
 
     auto warpsPerTile =
         warpsPerTileWMMA(dotOp, retShape, numWarps, {mDim, nDim});
@@ -1553,7 +1553,7 @@ public:
     // Use transposed wmma layout to enable larger vectorization for global
     // store instructions.
     bool isTransposed = true;
-    wmmaEnc = ttg::AMDWmmaEncodingAttr::get(ctx, wmmaVersion, isTransposed,
+    wmmaEnc = ttg::HCUWmmaEncodingAttr::get(ctx, wmmaVersion, isTransposed,
                                             warpsPerTile, CTALayout,
                                             {mDim, nDim, kDim});
 
@@ -1633,7 +1633,7 @@ public:
   };
 
   bool isLegalFMAForm(DotOp dotOp, const DotElTypes &dotTypes) const {
-    if (AMD::supportsVDot(arch)) {
+    if (HCU::supportsVDot(arch)) {
       auto aOpType = dotOp.getA().getType();
       int rank = aOpType.getRank();
       int k = aOpType.getShape()[rank - 1];
@@ -1645,7 +1645,7 @@ public:
       }
 
       // CDNA4 has Bf16 v_dot2
-      if (AMD::deduceISAFamily(arch) == ISAFamily::CDNA4 &&
+      if (HCU::deduceISAFamily(arch) == ISAFamily::CDNA4 &&
           dotTypes.a.isBF16() && dotTypes.b.isBF16() && dotTypes.c.isF32() &&
           dotTypes.d.isF32() && k % 2 == 0) {
         return true;
@@ -1682,7 +1682,7 @@ public:
 
   LogicalResult tryAccelerateF16WithVDot(DotOp dotOp, PatternRewriter &rewriter,
                                          const DotElTypes &dotTypes) const {
-    if (!AMD::supportsVDot(arch))
+    if (!HCU::supportsVDot(arch))
       return rewriter.notifyMatchFailure(
           dotOp, "Target architecture does not support V_DOT instruction.");
 
@@ -1776,11 +1776,11 @@ public:
 
 } // namespace
 
-#define GEN_PASS_DEF_TRITONAMDGPUACCELERATEMATMUL
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUACCELERATEMATMUL
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
-struct TritonAMDGPUAccelerateMatmulPass
-    : impl::TritonAMDGPUAccelerateMatmulBase<TritonAMDGPUAccelerateMatmulPass> {
+struct TritonHCUGPUAccelerateMatmulPass
+    : impl::TritonHCUGPUAccelerateMatmulBase<TritonHCUGPUAccelerateMatmulPass> {
   using Base::Base;
 
   void runOnOperation() override {
@@ -1788,7 +1788,7 @@ struct TritonAMDGPUAccelerateMatmulPass
     ModuleOp m = getOperation();
 
     RewritePatternSet mfmaPatterns(context);
-    switch (auto isaFamily = triton::AMD::deduceISAFamily(archGenerationName)) {
+    switch (auto isaFamily = triton::HCU::deduceISAFamily(archGenerationName)) {
     case ISAFamily::GFX1250:
       mfmaPatterns.add<ScaledBlockedToScaledWMMAF8F6F4>(
           context, getWmmaVersion(archGenerationName), /*benefit=*/3);

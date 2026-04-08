@@ -1,4 +1,4 @@
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "triton/Dialect/Distributed/IR/Dialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
@@ -35,7 +35,7 @@
 #include "llvm/Support/LogicalResult.h"
 #include <utility>
 
-#define DEBUG_TYPE "tritonamdgpu-canonicalize-pointers"
+#define DEBUG_TYPE "tritonhcugpu-canonicalize-pointers"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
@@ -43,8 +43,8 @@ namespace tt = mlir::triton;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDGPUCANONICALIZEPOINTERS
-#include "TritonAMDGPUTransforms/Passes.h.inc"
+#define GEN_PASS_DEF_TRITONHCUGPUCANONICALIZEPOINTERS
+#include "TritonHCUGPUTransforms/Passes.h.inc"
 
 // -----------------------------------------------------------------------------
 // Pointer canonicalizer utility class
@@ -1095,12 +1095,12 @@ private:
 /// Slice only offset and keep base - i.e.,
 /// slice(fatPtrBase, fatPtrOffset) -> (fatPtrBase, slice(fatPtrOffset))
 class ConvertExtractSliceOp
-    : public PointerCanonicalizationPattern<tt::amdgpu::ExtractSliceOp> {
+    : public PointerCanonicalizationPattern<tt::hcugpu::ExtractSliceOp> {
 public:
   using PointerCanonicalizationPattern::PointerCanonicalizationPattern;
 
   LogicalResult
-  matchAndRewrite_(tt::amdgpu::ExtractSliceOp extractSliceOp,
+  matchAndRewrite_(tt::hcugpu::ExtractSliceOp extractSliceOp,
                    OneToNOpAdaptor adaptor,
                    ConversionPatternRewriter &rewriter) const override {
     ValueRange remappedOperands = adaptor.getSource();
@@ -1123,7 +1123,7 @@ public:
     auto slicedOffsetsTy = RankedTensorType::get(
         resultType.getShape(), fatPtrOffsetTy.getElementType(),
         resultType.getEncoding());
-    Value slicedOffsets = tt::amdgpu::ExtractSliceOp::create(
+    Value slicedOffsets = tt::hcugpu::ExtractSliceOp::create(
         rewriter, loc, Type{slicedOffsetsTy}, Value{fatPtrOffset},
         extractSliceOp.getStaticOffsetsAttr());
 
@@ -1947,9 +1947,9 @@ public:
 /// 3. Clean up remaining `unrealized_casts` (currently only handling one
 /// category of such remaining casts but can be extended to handle all; see
 /// bullet 1 in TODOs).
-class TritonAMDGPUCanonicalizePointersPass
-    : public impl::TritonAMDGPUCanonicalizePointersBase<
-          TritonAMDGPUCanonicalizePointersPass> {
+class TritonHCUGPUCanonicalizePointersPass
+    : public impl::TritonHCUGPUCanonicalizePointersBase<
+          TritonHCUGPUCanonicalizePointersPass> {
   using Base::Base;
 
 public:
@@ -2028,9 +2028,9 @@ static void getForwardSliceImpl(OpOperand *use, Operation *op,
   forwardSlice->insert(op);
 }
 
-void TritonAMDGPUCanonicalizePointersPass::runOnOperation() {
+void TritonHCUGPUCanonicalizePointersPass::runOnOperation() {
   LLVM_DEBUG({
-    llvm::dbgs() << "before tritonamdgpu-canonicalize-pointers\n";
+    llvm::dbgs() << "before tritonhcugpu-canonicalize-pointers\n";
     getOperation()->getParentOfType<ModuleOp>()->dump();
     llvm::dbgs() << "\n";
   });
@@ -2093,11 +2093,11 @@ void TritonAMDGPUCanonicalizePointersPass::runOnOperation() {
 
   target.addDynamicallyLegalDialect<tt::TritonDialect>(isLegal);
   target.addDynamicallyLegalDialect<triton::gpu::TritonGPUDialect>(isLegal);
-  target.addDynamicallyLegalDialect<triton::amdgpu::TritonAMDGPUDialect>(isLegal);
+  target.addDynamicallyLegalDialect<triton::hcugpu::TritonHCUGPUDialect>(isLegal);
   target.addDynamicallyLegalDialect<scf::SCFDialect>(isLegal);
   target.addDynamicallyLegalDialect<cf::ControlFlowDialect>(isLegal);
   target.addDynamicallyLegalDialect<arith::ArithDialect>(isLegal);
-  target.addDynamicallyLegalDialect<triton::amdgpu::TritonAMDGPUDialect>(
+  target.addDynamicallyLegalDialect<triton::hcugpu::TritonHCUGPUDialect>(
     isLegal);
   // distributed dialect extension
   target.addDynamicallyLegalDialect<triton::distributed::DistributedDialect>(
@@ -2124,7 +2124,7 @@ void TritonAMDGPUCanonicalizePointersPass::runOnOperation() {
       MaterializeFatPointer<tt::AtomicRMWOp>,
       MaterializeFatPointer<tt::BitcastOp>, MaterializeFatPointer<tt::LoadOp>,
       MaterializeFatPointer<triton::gpu::AsyncCopyGlobalToLocalOp>,
-      MaterializeFatPointer<triton::amdgpu::MatrixLoadToLocalOp>,
+      MaterializeFatPointer<triton::hcugpu::MatrixLoadToLocalOp>,
       MaterializeFatPointer<tt::PtrToIntOp>, MaterializeFatPointer<tt::StoreOp>,
       MaterializeFatPointerVariadic<tt::CallOp>,
       MaterializeFatPointerVariadic<tt::ExternElementwiseOp>,

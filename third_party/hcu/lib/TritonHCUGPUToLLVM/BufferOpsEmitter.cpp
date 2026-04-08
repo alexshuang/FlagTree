@@ -7,7 +7,7 @@
 
 #include "BufferOpsEmitter.h"
 
-using namespace triton::AMD;
+using namespace triton::HCU;
 
 namespace {
 
@@ -29,7 +29,7 @@ bool isZero(Value v) {
 }
 } // namespace
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 BufferEmitter::BufferEmitter(RewriterBase &rw, Location loc, TargetInfo ti)
     : rewriter(rw), loc(loc), targetInfo(ti) {}
 
@@ -148,7 +148,7 @@ Value BufferEmitter::emitAtomicCAS(Type type, Value rsrcDesc, Value offset,
   // Note: rocdl.raw.ptr.buffer.atomic.cmpswap expects
   // val to be before cmp in the arg list. This is
   // the opposite of the order in tl.atomic_cmpxchg
-  // and amdg.buffer_atomic_cas
+  // and hcug.buffer_atomic_cas
   SmallVector<Value, 6> args{casStoreVal, casCmpVal};
   fillCommonArgsAtomics(type, rsrcDesc, offset, pred, hasUsers, args);
 
@@ -314,4 +314,4 @@ void BufferEmitter::fillCommonArgsAtomics(Type type, Value rsrcDesc,
   args.push_back(cacheModifiers);
 }
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU

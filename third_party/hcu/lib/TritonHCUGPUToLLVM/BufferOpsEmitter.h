@@ -1,8 +1,8 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_BUFFEROPSEMITTER_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_BUFFEROPSEMITTER_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_BUFFEROPSEMITTER_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_BUFFEROPSEMITTER_H_
 
 #include "TargetInfo.h"
-#include "TritonAMDGPUToLLVM/GCNAsmFormat.h"
+#include "TritonHCUGPUToLLVM/GCNAsmFormat.h"
 
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -11,7 +11,7 @@
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include <cstdint>
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 // Utility class to take care of buffer operation emission. We may add more
 // emitters into this as needed.  Buffer operations accept a memory descriptor
 // and an offset.
@@ -60,7 +60,7 @@ namespace mlir::LLVM::AMD {
 // Failure to meet 2) and 3) will result in incorrect memory access.
 struct BufferEmitter {
   BufferEmitter(RewriterBase &rw, Location loc,
-                mlir::triton::AMD::TargetInfo ti);
+                mlir::triton::HCU::TargetInfo ti);
 
   // Create a resource descriptor that points to the area of memory we want to
   // load from
@@ -107,9 +107,9 @@ private:
   // Rewriter utilities
   RewriterBase &rewriter;
   Location loc;
-  mlir::triton::AMD::TargetInfo targetInfo;
+  mlir::triton::HCU::TargetInfo targetInfo;
 };
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTOLLVM_BUFFEROPSEMITTER_H_
+#endif // TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTOLLVM_BUFFEROPSEMITTER_H_

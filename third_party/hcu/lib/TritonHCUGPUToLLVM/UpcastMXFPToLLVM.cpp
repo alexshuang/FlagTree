@@ -1,6 +1,6 @@
 #include "PatternTritonGPUOpToLLVM.h"
 
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "Utility.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -19,16 +19,16 @@
 using namespace mlir;
 using namespace mlir::triton;
 using namespace mlir::triton::gpu;
-using ::mlir::LLVM::AMD::upcast4xMxfp8_HW;
-using ::mlir::LLVM::AMD::upcast8xMxfp4_HW;
-using ::mlir::LLVM::AMD::upcast8xMxfp4_SW;
+using ::mlir::LLVM::HCU::upcast4xMxfp8_HW;
+using ::mlir::LLVM::HCU::upcast8xMxfp4_HW;
+using ::mlir::LLVM::HCU::upcast8xMxfp4_SW;
 
 namespace {
 
 SmallVector<Value> upcastMxfp4_SW(RewriterBase &rewriter,
-                                  amdgpu::UpcastMXFPOp upcastOp, bool toFp16,
+                                  hcugpu::UpcastMXFPOp upcastOp, bool toFp16,
                                   ArrayRef<Value> values, int idx,
-                                  AMD::ISAFamily isaFamily,
+                                  HCU::ISAFamily isaFamily,
                                   Value scale = nullptr) {
   Location loc = upcastOp.getLoc();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -45,7 +45,7 @@ Value mxfpScaleFp16(RewriterBase &rewriter, Location loc, Value v, Value scale,
   Value scaleF32 =
       b.bitcast(b.shl(b.zext(i32_ty, scale), b.i32_val(23)), f32_ty);
   Value scaleF16 =
-      LLVM::AMD::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, scaleF32);
+      LLVM::HCU::cvtFp32ToFp16RTNE_oneValue(loc, rewriter, scaleF32);
   Value mulF16 = b.fmul(v, scaleF16);
   if (fastMath)
     return mulF16;
@@ -83,12 +83,12 @@ Value mxfpScaleBf16ViaF32(RewriterBase &rewriter, Location loc, Value v,
 // Upcast 8 mxfp4 values from xVals starting at idx using the given scale
 // factor, and store the results into yVals
 static void upcast8xMxfp4(RewriterBase &rewriter, Location loc,
-                          AMD::ISAFamily isaFamily, amdgpu::UpcastMXFPOp op,
+                          HCU::ISAFamily isaFamily, hcugpu::UpcastMXFPOp op,
                           ArrayRef<Value> xVals, bool useFp16, int idx,
                           Value scale, SmallVector<Value> &yVals) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   /// fp4->bf16/f16 for cdna4
-  if (isaFamily == AMD::ISAFamily::CDNA4) {
+  if (isaFamily == HCU::ISAFamily::CDNA4) {
     Type retElemType = useFp16 ? f16_ty : bf16_ty;
     SmallVector<Value, 4> v4i32 =
         useFp16 ? upcast8xMxfp4_HW<ROCDL::CvtScaleF32PkF16Fp4Op>(
@@ -103,7 +103,7 @@ static void upcast8xMxfp4(RewriterBase &rewriter, Location loc,
     return;
   }
   /// fp4->bf16 for cdna3
-  if (isaFamily == AMD::ISAFamily::CDNA3 && !useFp16) {
+  if (isaFamily == HCU::ISAFamily::CDNA3 && !useFp16) {
     SmallVector<Value> v8bf16 =
         upcastMxfp4_SW(rewriter, op, useFp16, xVals, idx, isaFamily, scale);
     yVals.append(v8bf16.begin(), v8bf16.end());
@@ -124,13 +124,13 @@ static void upcast8xMxfp4(RewriterBase &rewriter, Location loc,
 // Upcast 4 mxfp8 values from xVals starting at idx using the given scale
 // factor, and store the results into yVals
 static void upcast4xMxfp8(RewriterBase &rewriter, Location loc,
-                          AMD::ISAFamily isaFamily, ArrayRef<Value> xVals,
+                          HCU::ISAFamily isaFamily, ArrayRef<Value> xVals,
                           bool useFp16, ScaleDotElemType fpType, int idx,
                           Value scale, bool fastMath,
                           SmallVector<Value> &yVals) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
 
-  if (isaFamily == AMD::ISAFamily::CDNA4) {
+  if (isaFamily == HCU::ISAFamily::CDNA4) {
     Type retElemType = useFp16 ? f16_ty : bf16_ty;
     SmallVector<Value, 2> v2i32 =
         useFp16 ? (fpType == ScaleDotElemType::E4M3
@@ -162,18 +162,18 @@ static void upcast4xMxfp8(RewriterBase &rewriter, Location loc,
 }
 
 class UpcastMXFPOpPattern
-    : public ConvertOpToLLVMPattern<amdgpu::UpcastMXFPOp> {
+    : public ConvertOpToLLVMPattern<hcugpu::UpcastMXFPOp> {
 private:
-  const AMD::TargetInfo &targetInfo;
+  const HCU::TargetInfo &targetInfo;
 
 public:
   UpcastMXFPOpPattern(LLVMTypeConverter &typeConverter,
-                      const AMD::TargetInfo &targetInfo, PatternBenefit benefit)
+                      const HCU::TargetInfo &targetInfo, PatternBenefit benefit)
       : ConvertOpToLLVMPattern(typeConverter, benefit), targetInfo(targetInfo) {
   }
 
   LogicalResult
-  matchAndRewrite(amdgpu::UpcastMXFPOp op, OpAdaptor adaptor,
+  matchAndRewrite(hcugpu::UpcastMXFPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto isaFamily = targetInfo.getISAFamily();
     auto fpType = op.getFpType();
@@ -201,7 +201,7 @@ public:
 
     auto dotEncoding =
         cast<DotOperandEncodingAttr>(op.getSrc().getType().getEncoding());
-    auto mfmaEncoding = dyn_cast<AMDMfmaEncodingAttr>(dotEncoding.getParent());
+    auto mfmaEncoding = dyn_cast<HCUMfmaEncodingAttr>(dotEncoding.getParent());
     if (!mfmaEncoding)
       return rewriter.notifyMatchFailure(op, "NYI: non-mfma dot operand");
     LDBG("mfma: " << mfmaEncoding);
@@ -295,7 +295,7 @@ public:
 };
 } // namespace
 
-void mlir::triton::AMD::populateUpcastMXFPToLLVMPatterns(
+void mlir::triton::HCU::populateUpcastMXFPToLLVMPatterns(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     const TargetInfo &targetInfo, PatternBenefit benefit) {
   patterns.add<UpcastMXFPOpPattern>(typeConverter, targetInfo, benefit);

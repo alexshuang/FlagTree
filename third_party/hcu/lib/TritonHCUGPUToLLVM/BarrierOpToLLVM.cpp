@@ -1,4 +1,4 @@
-#include "Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "PatternTritonGPUOpToLLVM.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -15,11 +15,11 @@ constexpr int kInitCountPos = 32;
 namespace {
 
 struct InitBarrierOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::InitBarrierOp> {
+    : public ConvertOpToLLVMPattern<triton::hcugpu::InitBarrierOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::InitBarrierOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::InitBarrierOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -53,11 +53,11 @@ struct InitBarrierOpConversion
 };
 
 struct ArriveBarrierOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::ArriveBarrierOp> {
+    : public ConvertOpToLLVMPattern<triton::hcugpu::ArriveBarrierOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::ArriveBarrierOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::ArriveBarrierOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
     TritonLLVMOpBuilder b(loc, rewriter);
@@ -82,11 +82,11 @@ struct ArriveBarrierOpConversion
 };
 
 struct WaitBarrierOpConversion
-    : public ConvertOpToLLVMPattern<triton::amdgpu::WaitBarrierOp> {
+    : public ConvertOpToLLVMPattern<triton::hcugpu::WaitBarrierOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
-  matchAndRewrite(triton::amdgpu::WaitBarrierOp op, OpAdaptor adaptor,
+  matchAndRewrite(triton::hcugpu::WaitBarrierOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
     TritonLLVMOpBuilder b(loc, rewriter);
@@ -117,7 +117,7 @@ struct WaitBarrierOpConversion
 };
 } // namespace
 
-void mlir::triton::AMD::populateBarrierOpToLLVMPatterns(
+void mlir::triton::HCU::populateBarrierOpToLLVMPatterns(
     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
     PatternBenefit benefit) {
   patterns.add<InitBarrierOpConversion>(typeConverter, benefit);

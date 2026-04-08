@@ -1,7 +1,7 @@
-#ifndef TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTRANSFORMS_UTILITY_H_
-#define TRITON_THIRD_PARTY_AMD_LIB_TRITONAMDGPUTRANSFORMS_UTILITY_H_
+#ifndef TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTRANSFORMS_UTILITY_H_
+#define TRITON_THIRD_PARTY_HCU_LIB_TRITONHCUGPUTRANSFORMS_UTILITY_H_
 
-#include "amd/lib/TritonAMDGPUToLLVM/TargetInfo.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/TargetInfo.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -25,7 +25,7 @@ getDotOpIdxFromMatrixLoad(triton::MatrixLoadOp matrixOp);
 // Returns a padded shared encoding minimizing bank conflicts for the given
 // tensor and dot encoding.
 triton::gpu::PaddedSharedEncodingAttr
-composePaddedLayout(const triton::AMD::TargetInfo &targetInfo,
+composePaddedLayout(const triton::HCU::TargetInfo &targetInfo,
                     triton::gpu::DotOperandEncodingAttr dotOpEnc,
                     triton::gpu::TensorOrMemDesc srcTy,
                     ArrayRef<unsigned> sharedOrder, bool useAsyncCopy);

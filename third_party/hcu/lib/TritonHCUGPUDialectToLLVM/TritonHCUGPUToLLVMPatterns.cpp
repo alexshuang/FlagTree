@@ -1,8 +1,8 @@
-#include "third_party/amd/include/TritonAMDGPUToLLVM/PatternTritonAMDGPUToLLVM.h"
+#include "third_party/hcu/include/TritonHCUGPUToLLVM/PatternTritonHCUGPUToLLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
 
-namespace mlir::triton::AMD {
-void populateTritonAMDGPUToLLVMPatterns(LLVMTypeConverter &typeConverter,
+namespace mlir::triton::HCU {
+void populateTritonHCUGPUToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                         RewritePatternSet &patterns,
                                         PatternBenefit benefit) {
   populateExtractSliceOpToLLVMPatterns(typeConverter, patterns, benefit);
@@ -10,4 +10,4 @@ void populateTritonAMDGPUToLLVMPatterns(LLVMTypeConverter &typeConverter,
   populateConcatOpToLLVMPatterns(typeConverter, patterns, benefit);
   populateScaledUpcastOpToLLVMPatterns(typeConverter, patterns, benefit);
 }
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU

@@ -3,7 +3,7 @@
 
 using namespace mlir;
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 
 ElemLocationKey getElemCoordinatesFromRegisters(tt::LinearLayout ll,
                                                 unsigned regId,
@@ -33,4 +33,4 @@ std::optional<int> getRegFromCoordinates(tt::LinearLayout ll,
   return {};
 } // namespace mlir::triton
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU

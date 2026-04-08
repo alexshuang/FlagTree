@@ -4,7 +4,7 @@
 
 #include "AtomicRMWOpsEmitter.h"
 
-using namespace triton::AMD;
+using namespace triton::HCU;
 
 namespace {
 
@@ -133,7 +133,7 @@ Value genPrefixSum(RewriterBase &rewriter, Value v0) {
 }
 } // namespace
 
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 
 Value AtomicRMWEmitter::emitAtomicRMW(RewriterBase &rewriter, Value rmwPtr,
                                       Value valElem, Value rmwMask,
@@ -511,4 +511,4 @@ Value AtomicRMWEmitter::atomicIntraWaveReduce(RewriterBase &rewriter,
   return endBlock->getArgument(0);
 }
 
-} // namespace mlir::LLVM::AMD
+} // namespace mlir::LLVM::HCU

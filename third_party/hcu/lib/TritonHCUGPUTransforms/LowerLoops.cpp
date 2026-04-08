@@ -1,14 +1,14 @@
-#include "TritonAMDGPUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
 #include "Utility.h"
-#include "amd/lib/TritonAMDGPUToLLVM/AsyncUtility.h"
-#include "amd/lib/TritonAMDGPUToLLVM/TargetInfo.h"
-#include "amd/lib/TritonAMDGPUTransforms/PipelineUtility.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/AsyncUtility.h"
+#include "hcu/lib/TritonHCUGPUToLLVM/TargetInfo.h"
+#include "hcu/lib/TritonHCUGPUTransforms/PipelineUtility.h"
 #include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "llvm/Support/Debug.h"
 #include <variant>
 
-#define DEBUG_TYPE "tritonamdgpu-pipeline-lower-loops"
+#define DEBUG_TYPE "tritonhcugpu-pipeline-lower-loops"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
 #define LDBG(X) LLVM_DEBUG(DBGS() << X << "\n")
 
@@ -21,7 +21,7 @@ namespace ttg = mlir::triton::gpu;
 // schedule will be passed to expandLoops and eventually to PipelineExpander.
 //===----------------------------------------------------------------------===//
 
-using mlir::triton::AMD::AttrBypassLDS;
+using mlir::triton::HCU::AttrBypassLDS;
 
 namespace mlir {
 struct StreamCopyChainOps {
@@ -44,7 +44,7 @@ using LoadToStreamOpMap = llvm::MapVector<Operation *, StreamOpVariant>;
 bool canBeConvertedToAsyncLoad(unsigned numBuffers, tt::LoadOp loadOp,
                                ttg::SharedEncodingTrait sharedEnc,
                                tt::ModuleAxisInfoAnalysis &axisInfoAnalysis,
-                               const tt::AMD::TargetInfo &targetInfo);
+                               const tt::HCU::TargetInfo &targetInfo);
 
 AsyncCopyChainOps createAsyncCopy(tt::LoadOp loadOp, Value alloc,
                                   Value extractIdx, int contiguity) {
@@ -103,7 +103,7 @@ StreamCopyChainOps createStreamCopy(tt::LoadOp loadOp, Value alloc,
 
 // Returns the given |inputValue|'s dot user result encoding and updates |opIdx|
 // and |vecSize| with which dot operand |inputValue| is fed into if possible.
-ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx,
+ttg::HCUMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx,
                                         unsigned *vecSize) {
   if (!inputValue.hasOneUse())
     return nullptr;
@@ -120,7 +120,7 @@ ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx,
     auto operandType = cast<RankedTensorType>(inputValue.getType());
     *vecSize = ttg::toLinearLayout(operandType).getNumConsecutiveInOut();
     auto dotType = cast<RankedTensorType>(dotOp->getResult(0).getType());
-    return dyn_cast<ttg::AMDMfmaEncodingAttr>(dotType.getEncoding());
+    return dyn_cast<ttg::HCUMfmaEncodingAttr>(dotType.getEncoding());
   }
 
   return getDotEncoding(user->getResult(0), opIdx, vecSize);
@@ -128,7 +128,7 @@ ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx,
 
 // Adapted from
 // lib/Dialect/TritonGPU/Transforms/Utility.cpp::getSharedEncIfAllUsersAreDotEnc
-// to support AMDMfmaEncodingAttr.
+// to support HCUMfmaEncodingAttr.
 // TODO(max): figure out how to refactor to use upstream
 //
 // If all the transitive uses of the given value have are used by a convert to
@@ -136,7 +136,7 @@ ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx,
 // needs to be used to be compatible with users' layouts.
 std::optional<ttg::SharedEncodingTrait> getSharedEncIfAllUsersAreDotEnc(
     Operation *loadOp, tt::ModuleAxisInfoAnalysis &axisInfoAnalysis,
-    const tt::AMD::TargetInfo &targetInfo, bool useAsyncCopy) {
+    const tt::HCU::TargetInfo &targetInfo, bool useAsyncCopy) {
   assert(loadOp);
   Value loadedValue = loadOp->getResult(0);
   llvm::SmallVector<ttg::SharedEncodingTrait> sharedEncs;
@@ -153,7 +153,7 @@ std::optional<ttg::SharedEncodingTrait> getSharedEncIfAllUsersAreDotEnc(
       // use it if it is compatible with the other users.
       tempAttr = cast<ttg::SharedEncodingTrait>(memDesc.getEncoding());
       // If the immediate user is ttg::LocalAllocOp, likely it's created in
-      // TritonAMDGPUOptimizeDotOperands. We should just respect it.
+      // TritonHCUGPUOptimizeDotOperands. We should just respect it.
       if (!isa<ttg::LocalAllocOp>(user) &&
           !getSharedEncIfAllUsersAreDotEnc(user, axisInfoAnalysis, targetInfo,
                                            useAsyncCopy)) {
@@ -262,7 +262,7 @@ std::optional<ttg::SharedEncodingTrait> getSharedEncIfAllUsersAreDotEnc(
 bool canBeConvertedToAsyncLoad(unsigned numBuffers, tt::LoadOp loadOp,
                                ttg::SharedEncodingTrait sharedEnc,
                                tt::ModuleAxisInfoAnalysis &axisInfoAnalysis,
-                               const tt::AMD::TargetInfo &targetInfo) {
+                               const tt::HCU::TargetInfo &targetInfo) {
   // If we have a single buffer we would require another barrier after the
   // local_reads so instead we fall back to pipeline with registers
   // Removing this check will create incorrect IR, see
@@ -270,7 +270,7 @@ bool canBeConvertedToAsyncLoad(unsigned numBuffers, tt::LoadOp loadOp,
   if (numBuffers <= 1)
     return false;
 
-  using tt::AMD::ISAFamily;
+  using tt::HCU::ISAFamily;
   if (sharedEnc && llvm::is_contained({ISAFamily::CDNA3, ISAFamily::CDNA4},
                                       targetInfo.getISAFamily())) {
     // Compute the final vecSize we can use for the combination of
@@ -351,7 +351,7 @@ createStreamOps(const LoadToInfoMap &loadToInfo, scf::ForOp &forOp,
                                       info.sharedEncoding, numBuffers);
     assert(alloc && "Failed to create alloc for the async load.");
     auto arch = getAMDArch(loadOp->getParentOfType<ModuleOp>());
-    triton::AMD::TargetInfo targetInfo(arch ? arch->str() : "");
+    triton::HCU::TargetInfo targetInfo(arch ? arch->str() : "");
 
     // Replace the old load with multi-buffered loads
     if (useAsyncCopy &&
@@ -585,7 +585,7 @@ void scheduleStreamOps(const LoadToStreamOpMap &loadToStreamOp,
 
 void updateSchedule(scf::ForOp &forOp, const LoadToInfoMap &loadToInfo,
                     tt::CoarseSchedule &schedule,
-                    triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis,
+                    triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                     int numStages, bool useAsyncCopy, bool waitAtTail) {
   LDBG("SingleDotSchedule::updateSchedule");
   Stages stages;
@@ -698,7 +698,7 @@ void scheduleStreamOps(const LoadToStreamOpMap &loadToStreamOp,
 
 void updateSchedule(scf::ForOp &forOp, const LoadToInfoMap &loadToInfo,
                     tt::CoarseSchedule &schedule,
-                    triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis,
+                    triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                     bool useAsyncCopy) {
   LDBG("ChainedDotSchedule::updateSchedule");
   ChainedDotClusters clusters;
@@ -736,7 +736,7 @@ void updateSchedule(scf::ForOp &forOp, const LoadToInfoMap &loadToInfo,
 } // namespace ChainedDotSchedule
 
 void lowerLoop(scf::ForOp forOp,
-               triton::AMD::ModuleAxisInfoAnalysis &axisInfoAnalysis,
+               triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                bool useAsyncCopy, bool usePingpong) {
   tt::CoarseSchedule schedule;
   if (failed(schedule.deSerialize(forOp, /*normalizeClusterId=*/false))) {
@@ -755,7 +755,7 @@ void lowerLoop(scf::ForOp forOp,
       getIndirectLevel(axisInfoAnalysis, forOp, numStages);
 
   auto arch = getAMDArch(forOp->getParentOfType<ModuleOp>());
-  triton::AMD::TargetInfo targetInfo(arch ? arch->str() : "");
+  triton::HCU::TargetInfo targetInfo(arch ? arch->str() : "");
 
   LoadToInfoMap loadToInfo;
   for (const auto &[load, info] : loadOpToIndLevel) {
@@ -790,7 +790,7 @@ void lowerLoop(scf::ForOp forOp,
 }
 
 void lowerLoops(ModuleOp moduleOp, bool useAsyncCopy, bool usePingpong) {
-  triton::AMD::ModuleAxisInfoAnalysis axisInfoAnalysis(moduleOp);
+  triton::HCU::ModuleAxisInfoAnalysis axisInfoAnalysis(moduleOp);
   SmallVector<scf::ForOp> loops;
   moduleOp->walk([&](scf::ForOp forOp) { loops.push_back(forOp); });
   if (loops.empty())

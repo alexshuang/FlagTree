@@ -1,4 +1,4 @@
-#include "TritonAMDGPUToLLVM/Passes.h"
+#include "TritonHCUGPUToLLVM/Passes.h"
 
 #include "AsyncUtility.h"
 #include "Utility.h"
@@ -9,7 +9,7 @@
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 namespace mlir::triton {
 #define GEN_PASS_DEF_CONVERTBUILTINFUNCTOLLVM
-#include "TritonAMDGPUToLLVM/Passes.h.inc"
+#include "TritonHCUGPUToLLVM/Passes.h.inc"
 } // namespace mlir::triton
 
 using namespace mlir;

@@ -1,5 +1,5 @@
-#ifndef TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_PASSES_H_
-#define TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_PASSES_H_
+#ifndef TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTOLLVM_PASSES_H_
+#define TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTOLLVM_PASSES_H_
 
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -19,11 +19,11 @@ template <typename T> class OperationPass;
 namespace mlir::triton {
 
 #define GEN_PASS_DECL
-#include "TritonAMDGPUToLLVM/Passes.h.inc"
+#include "TritonHCUGPUToLLVM/Passes.h.inc"
 
 } // namespace mlir::triton
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 /// @brief Creates pass that keep LDS consumption within specified limits.
 /// @param arch target architecture name, for example "gfx940"
 /// @param customLDSLimit defines LDS size available for one thread block
@@ -34,28 +34,28 @@ createOptimizeLDSUsagePass(StringRef arch, int32_t customLDSLimit = 0);
 
 void runScalarizePackedFOpsPass(llvm::Function &F);
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU
 
 namespace mlir::triton {
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createConvertTritonAMDGPUToLLVMPass(StringRef targetArch, bool ftz);
+createConvertTritonHCUGPUToLLVMPass(StringRef targetArch, bool ftz);
 std::unique_ptr<OperationPass<ModuleOp>>
 createConvertBuiltinFuncToLLVMPass(bool ftz);
 std::unique_ptr<OperationPass<ModuleOp>>
-createTritonAMDGPUInsertInstructionSchedHintsPass(StringRef variant);
+createTritonHCUGPUInsertInstructionSchedHintsPass(StringRef variant);
 std::unique_ptr<OperationPass<ModuleOp>>
-createTritonAMDGPULowerInstructionSchedHintsPass(StringRef arch,
+createTritonHCUGPULowerInstructionSchedHintsPass(StringRef arch,
                                                  int32_t numStages);
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createAMDGPUConvertWarpSpecializeToLLVM(StringRef targetArch, int waspNumLoadWarps, 
+createHCUGPUConvertWarpSpecializeToLLVM(StringRef targetArch, int waspNumLoadWarps, 
     int waspNumMmaWarps, bool wdraEnabled, int wdraNumLoadRegs,
     int wdraNumMmaRegsMain, int wdraNumMmaRegsTail);
                                                  
 #define GEN_PASS_REGISTRATION
-#include "TritonAMDGPUToLLVM/Passes.h.inc"
+#include "TritonHCUGPUToLLVM/Passes.h.inc"
 
 } // namespace mlir::triton
 
-#endif // TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_PASSES_H_
+#endif // TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTOLLVM_PASSES_H_

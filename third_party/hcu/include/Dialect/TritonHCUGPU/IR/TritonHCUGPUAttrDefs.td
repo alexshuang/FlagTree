@@ -21,33 +21,33 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef TRITON_AMDGPU_ATTRDEFS
-#define TRITON_AMDGPU_ATTRDEFS
+#ifndef TRITON_HCUGPU_ATTRDEFS
+#define TRITON_HCUGPU_ATTRDEFS
 
 include "mlir/IR/AttrTypeBase.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
-include "TritonAMDGPUDialect.td"
+include "TritonHCUGPUDialect.td"
 include "mlir/IR/EnumAttr.td"
 
-class TritonAMDGPU_Attr<string name, list<Trait> traits = [],
+class TritonHCUGPU_Attr<string name, list<Trait> traits = [],
                      string baseCppClass = "::mlir::Attribute">
-  : AttrDef<TritonAMDGPU_Dialect, name, traits, baseCppClass> {
+  : AttrDef<TritonHCUGPU_Dialect, name, traits, baseCppClass> {
 }
 
-def SetFP8Clamping : TritonAMDGPU_Attr<"SetFP8Clamping"> {
+def SetFP8Clamping : TritonHCUGPU_Attr<"SetFP8Clamping"> {
   let mnemonic = "amdgcn.set.fp8.clamping";
 }
 
-class TritonAMDGPU_I32Enum<string name, string description, list<I32EnumAttrCase> cases>
+class TritonHCUGPU_I32Enum<string name, string description, list<I32EnumAttrCase> cases>
     : I32EnumAttr<name, description, cases> {
   let genSpecializedAttr = 0;
-  let cppNamespace = "::mlir::triton::amdgpu";
+  let cppNamespace = "::mlir::triton::hcugpu";
 }
 
-class TritonAMDGPU_I32EnumAttr<string mnemonic, TritonAMDGPU_I32Enum enumInfo> :
-    EnumAttr<TritonAMDGPU_Dialect, enumInfo, mnemonic> {
+class TritonHCUGPU_I32EnumAttr<string mnemonic, TritonHCUGPU_I32Enum enumInfo> :
+    EnumAttr<TritonHCUGPU_Dialect, enumInfo, mnemonic> {
   let assemblyFormat = "`<` $value `>`";
-  let cppNamespace = "::mlir::triton::amdgpu";
+  let cppNamespace = "::mlir::triton::hcugpu";
 }
 
 def SchedHintCaseNone : I32EnumAttrCase<"none", 0>;
@@ -56,18 +56,18 @@ def SchedHintCaseAttention : I32EnumAttrCase<"attention", 2>;
 //       when hcu backend is ready.
 def SchedHintCaseLLVMIglp8: I32EnumAttrCase<"llvm_iglp_8", 9>;
 
-def TritonAMDGPU_SchedHintsEnum : TritonAMDGPU_I32Enum<
-  "SchedHint", "Instruction Scheduling Hints for AMD GPUs", [
+def TritonHCUGPU_SchedHintsEnum : TritonHCUGPU_I32Enum<
+  "SchedHint", "Instruction Scheduling Hints for HCU GPUs", [
     SchedHintCaseNone,
     SchedHintCaseAttention,
     SchedHintCaseLLVMIglp8,     // TODO: Move to HCU-specific file.
   ]>;
 
-def TritonAMDGPU_SchedHintVariantAttr :
-  TritonAMDGPU_I32EnumAttr<"SchedHintVariant", TritonAMDGPU_SchedHintsEnum>;
+def TritonHCUGPU_SchedHintVariantAttr :
+  TritonHCUGPU_I32EnumAttr<"SchedHintVariant", TritonHCUGPU_SchedHintsEnum>;
 
-def TritonAMDGPU_MlsEncoding : TritonAMDGPU_Attr<"MlsEncoding"> {
-  let cppNamespace = "::mlir::triton::amdgpu";
+def TritonHCUGPU_MlsEncoding : TritonHCUGPU_Attr<"MlsEncoding"> {
+  let cppNamespace = "::mlir::triton::hcugpu";
   let mnemonic = "MlsEncoding";
   let summary = "mls encoding attribute.";
   let description = [{

@@ -1,5 +1,5 @@
-#ifndef TRITON_AMDGPU_OP_INTERFACES
-#define TRITON_AMDGPU_OP_INTERFACES
+#ifndef TRITON_HCUGPU_OP_INTERFACES
+#define TRITON_HCUGPU_OP_INTERFACES
 
 include "mlir/IR/OpBase.td"
 
@@ -9,7 +9,7 @@ def BufferOpInterface : OpInterface<"BufferOpInterface"> {
     It provides methods to access common properties such base pointer, offset, mask and others.
   }];
 
-  let cppNamespace = "::mlir::triton::amdgpu";
+  let cppNamespace = "::mlir::triton::hcugpu";
 
   let methods = [
     InterfaceMethod<
@@ -39,4 +39,4 @@ def BufferOpInterface : OpInterface<"BufferOpInterface"> {
   ];
 }
 
-#endif // TRITON_AMDGPU_OP_INTERFACES
+#endif // TRITON_HCUGPU_OP_INTERFACES

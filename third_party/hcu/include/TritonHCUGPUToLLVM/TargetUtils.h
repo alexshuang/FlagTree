@@ -1,9 +1,9 @@
-#ifndef TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_TARGETUTILS_H_
-#define TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_TARGETUTILS_H_
+#ifndef TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTOLLVM_TARGETUTILS_H_
+#define TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTOLLVM_TARGETUTILS_H_
 
 #include "llvm/ADT/StringRef.h"
 
-namespace mlir::triton::AMD {
+namespace mlir::triton::HCU {
 
 // A list of ISA families we care about.
 enum class ISAFamily {
@@ -31,7 +31,7 @@ bool isRDNA(ISAFamily isaFamily);
 
 // Here is a partial definition of DppCtrl enums. For the complete definition,
 // please check:
-// https://github.com/llvm/llvm-project/blob/8c75290/llvm/lib/Target/AMDGPU/SIDefines.h#L939
+// https://github.com/llvm/llvm-project/blob/8c75290/llvm/lib/Target/HCUGPU/SIDefines.h#L939
 enum class DppCtrl : uint32_t {
   QUAD_PERM_FIRST = 0,
   ROW_SHL0 = 0x100,
@@ -61,6 +61,6 @@ inline constexpr HCUISAFeature operator|(HCUISAFeature lhs, HCUISAFeature rhs) {
 HCUISAFeature deduceHCUISAFeature(llvm::StringRef arch);
 bool supportsHCUISAFeature(llvm::StringRef arch, HCUISAFeature feature);
 
-} // namespace mlir::triton::AMD
+} // namespace mlir::triton::HCU
 
-#endif // TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTOLLVM_TARGETUTILS_H_
+#endif // TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTOLLVM_TARGETUTILS_H_

@@ -1,10 +1,10 @@
-#ifndef TRITON_THIRD_PARTY_AMD_INCLUDE_UTILS_UTILITY_H_
-#define TRITON_THIRD_PARTY_AMD_INCLUDE_UTILS_UTILITY_H_
+#ifndef TRITON_THIRD_PARTY_HCU_INCLUDE_UTILS_UTILITY_H_
+#define TRITON_THIRD_PARTY_HCU_INCLUDE_UTILS_UTILITY_H_
 
 #include "llvm/ADT/ArrayRef.h"
 #include <cassert>
 #include <vector>
-namespace mlir::LLVM::AMD {
+namespace mlir::LLVM::HCU {
 
 template <typename T, typename U, typename BinaryOp>
 std::vector<unsigned> multiDimElementwise(const ArrayRef<T> &lhs,
@@ -19,5 +19,5 @@ std::vector<unsigned> multiDimElementwise(const ArrayRef<T> &lhs,
   }
   return result;
 }
-} // namespace mlir::LLVM::AMD
-#endif // TRITON_THIRD_PARTY_AMD_INCLUDE_UTILS_UTILITY_H_
+} // namespace mlir::LLVM::HCU
+#endif // TRITON_THIRD_PARTY_HCU_INCLUDE_UTILS_UTILITY_H_

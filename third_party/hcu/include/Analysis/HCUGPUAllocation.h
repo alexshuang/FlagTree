@@ -1,5 +1,5 @@
-#ifndef TRITONHCU_ANALYSIS_AMDGPU_ALLOCATION_H
-#define TRITONHCU_ANALYSIS_AMDGPU_ALLOCATION_H
+#ifndef TRITONHCU_ANALYSIS_HCUGPU_ALLOCATION_H
+#define TRITONHCU_ANALYSIS_HCUGPU_ALLOCATION_H
 
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
@@ -12,7 +12,7 @@ unsigned getConvertLayoutScratchInBytes(RankedTensorType srcTy,
                                         RankedTensorType dstTy,
                                         bool usePadding);
 
-unsigned AMDAllocationAnalysisScratchSizeFn(Operation *op);
+unsigned HCUAllocationAnalysisScratchSizeFn(Operation *op);
 
 // To convert a tensor from one layout to another, we need to allocate a
 // temporary buffer (i.e., scratch buffer) in shared memory. The conversion may
@@ -59,4 +59,4 @@ ScratchConfig getScratchConfigForCvt(RankedTensorType srcTy,
 
 } // namespace mlir::triton::HCU
 
-#endif // TRITONHCU_ANALYSIS_AMDGPU_ALLOCATION_H
+#endif // TRITONHCU_ANALYSIS_HCUGPU_ALLOCATION_H

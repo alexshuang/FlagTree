@@ -3,7 +3,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def TritonAMDGPUScheduleLoops : Pass<"tritonamdgpu-schedule-loops", "mlir::ModuleOp"> {
+def TritonHCUGPUScheduleLoops : Pass<"tritonhcugpu-schedule-loops", "mlir::ModuleOp"> {
   let summary = "Generate schedule for loops";
 
   let description = [{
@@ -11,7 +11,7 @@ def TritonAMDGPUScheduleLoops : Pass<"tritonamdgpu-schedule-loops", "mlir::Modul
     implement software pipelining
   }];
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
   let options = [
     Option<"numStages", "num_stages",
@@ -20,13 +20,13 @@ def TritonAMDGPUScheduleLoops : Pass<"tritonamdgpu-schedule-loops", "mlir::Modul
   ];
 }
 
-def TritonAMDGPUPipeline : Pass<"tritonamdgpu-pipeline", "mlir::ModuleOp"> {
+def TritonHCUGPUPipeline : Pass<"tritonhcugpu-pipeline", "mlir::ModuleOp"> {
   let summary = "pipeline";
   let description = [{
     Allocate LDS buffer, convert some loads to async loads, and expand loops
   }];
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
   let options = [
     Option<"useAsyncCopy", "use_async_copy",
@@ -38,15 +38,15 @@ def TritonAMDGPUPipeline : Pass<"tritonamdgpu-pipeline", "mlir::ModuleOp"> {
   ];
 }
 
-def TritonAMDGPUAccelerateMatmul : Pass<"tritonamdgpu-accelerate-matmul", "mlir::ModuleOp"> {
+def TritonHCUGPUAccelerateMatmul : Pass<"tritonhcugpu-accelerate-matmul", "mlir::ModuleOp"> {
   let summary = "accelerate matmul";
 
   let description = [{
     Optimize the input/output layout of `dot` instruction to make them compatible hardware accelerators
-    (e.g., AMD matrix cores)
+    (e.g., HCU matrix cores)
   }];
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
   let options = [
     Option<"archGenerationName", "arch-generation-name",
@@ -64,7 +64,7 @@ def TritonAMDGPUAccelerateMatmul : Pass<"tritonamdgpu-accelerate-matmul", "mlir:
   ];
 }
 
-def TritonAMDGPUOptimizeEpilogue : Pass<"tritonamdgpu-optimize-epilogue", "mlir::ModuleOp"> {
+def TritonHCUGPUOptimizeEpilogue : Pass<"tritonhcugpu-optimize-epilogue", "mlir::ModuleOp"> {
   let summary = "Optimize epilogue: (1) Store accumulators directly without going thorough SMEM in epilogue.";
 
   let description = [{
@@ -74,7 +74,7 @@ def TritonAMDGPUOptimizeEpilogue : Pass<"tritonamdgpu-optimize-epilogue", "mlir:
 
 }
 
-def TritonAMDGPUHoistLayoutConversions : Pass<"tritonamdgpu-hoist-layout-conversions", "mlir::triton::FuncOp"> {
+def TritonHCUGPUHoistLayoutConversions : Pass<"tritonhcugpu-hoist-layout-conversions", "mlir::triton::FuncOp"> {
   let summary = "Hoist layout conversions out of the loop";
 
   let description = [{
@@ -83,14 +83,14 @@ def TritonAMDGPUHoistLayoutConversions : Pass<"tritonamdgpu-hoist-layout-convers
   The rational is as follows:
   1. When the defining op of the src is out of the loop, it means the src is loop-invariant.
      Then we can potentially hoist this convert_layout op, since it's also loop-invariant.
-  2. The drawback of this LICM is higher register pressure. However, on AMD GPUs, we have
+  2. The drawback of this LICM is higher register pressure. However, on HCU GPUs, we have
      a larger register file but smaller shared memory. It's beneficial to keep loop-invariant
      variables in registers rather than loading them from shared memory in the loop.
   }];
 
 }
 
-def TritonAMDGPUCanonicalizePointers : Pass<"tritonamdgpu-canonicalize-pointers", "mlir::triton::FuncOp"> {
+def TritonHCUGPUCanonicalizePointers : Pass<"tritonhcugpu-canonicalize-pointers", "mlir::triton::FuncOp"> {
   let summary = "Canonicalize pointers: rewrite pointers passed to load/store operation as a `<basePtr, offset>` pair.";
 
   let description = [{
@@ -133,7 +133,7 @@ def TritonAMDGPUCanonicalizePointers : Pass<"tritonamdgpu-canonicalize-pointers"
   ];
 }
 
-def TritonAMDGPUReorderInstructions: Pass<"tritonamdgpu-reorder-instructions", "mlir::ModuleOp"> {
+def TritonHCUGPUReorderInstructions: Pass<"tritonhcugpu-reorder-instructions", "mlir::ModuleOp"> {
   let summary = "Reorder instructions";
 
   let description = "This pass reorder instructions so as to (1) decrease register pressure (e.g., by moving "
@@ -143,12 +143,12 @@ def TritonAMDGPUReorderInstructions: Pass<"tritonamdgpu-reorder-instructions", "
   let dependentDialects = [];
 }
 
-def TritonAMDGPUConvertToBufferOps : Pass<"tritonamdgpu-convert-buffer-ops", "mlir::ModuleOp"> {
+def TritonHCUGPUConvertToBufferOps : Pass<"tritonhcugpu-convert-buffer-ops", "mlir::ModuleOp"> {
   let summary = "Convert memory operations to buffer operations";
 
-  let description = "This pass converts memory and atomic operations (e.g., tt.load/tt.store/tt.atomic_rmw) to  amdgpu buffer operations, if possible";
+  let description = "This pass converts memory and atomic operations (e.g., tt.load/tt.store/tt.atomic_rmw) to  hcugpu buffer operations, if possible";
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
   let options = [
     Option<"archGenerationName", "arch-generation-name",
@@ -163,7 +163,7 @@ def TritonAMDGPUConvertToBufferOps : Pass<"tritonamdgpu-convert-buffer-ops", "ml
   ];
 }
 
-def TritonAMDGPUBlockPingpong: Pass<"tritonamdgpu-block-pingpong", "mlir::ModuleOp"> {
+def TritonHCUGPUBlockPingpong: Pass<"tritonhcugpu-block-pingpong", "mlir::ModuleOp"> {
   let summary = "Interleaving instructions from two warps on the same SIMD to better utilize matrix core";
 
   let description = [{
@@ -173,7 +173,7 @@ def TritonAMDGPUBlockPingpong: Pass<"tritonamdgpu-block-pingpong", "mlir::Module
     occupancy and number of warps.
   }];
 
-  let dependentDialects = ["mlir::ROCDL::ROCDLDialect, mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::ROCDL::ROCDLDialect, mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
   let options = [
     Option<"numStages", "num-stages",
@@ -182,7 +182,7 @@ def TritonAMDGPUBlockPingpong: Pass<"tritonamdgpu-block-pingpong", "mlir::Module
     ];
 }
 
-def TritonAMDGPUInThreadTranspose: Pass<"tritonamdgpu-in-thread-transpose", "mlir::triton::FuncOp"> {
+def TritonHCUGPUInThreadTranspose: Pass<"tritonhcugpu-in-thread-transpose", "mlir::triton::FuncOp"> {
   let summary = "Extend global load sizePerThread to 2D shape and perform transpose within registers per thread before writing to shared memory";
 
   let description = [{
@@ -216,7 +216,7 @@ def TritonAMDGPUInThreadTranspose: Pass<"tritonamdgpu-in-thread-transpose", "mli
       %loaded_data = tt.load ... : tensor<#transposable_layout>
       %tmp1 = ttg.convert_layout %loaded_data : tensor<#transposable_layout> -> tensor<#blocked>
       %tmp2 = ttg.convert_layout %tmp1 : tensor<#blocked> -> tensor<#transposable_layout>
-      %transposed = amdg.in_thread_transpose %tmp2 : tensor<#transposable_layout> -> tensor<#linear>
+      %transposed = hcug.in_thread_transpose %tmp2 : tensor<#transposable_layout> -> tensor<#linear>
       %local_data = ttg.local_alloc %transposed : tensor<#linear> -> !ttg.memdesc<#shared>
       %dot_operand = ttg.local_load %local_data : !ttg.memdesc<#shared> -> tensor<#ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>
     ```
@@ -229,10 +229,10 @@ def TritonAMDGPUInThreadTranspose: Pass<"tritonamdgpu-in-thread-transpose", "mli
     exist more operations like scf or ttg.memdesc_index. These convert_layouts ops are optimized out by later passes.
   }];
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect", "mlir::triton::gpu::TritonGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect", "mlir::triton::gpu::TritonGPUDialect"];
 }
 
-def TritonAMDGPUCoalesceAsyncCopy: Pass<"tritonamdgpu-coalesce-async-copy", "mlir::ModuleOp"> {
+def TritonHCUGPUCoalesceAsyncCopy: Pass<"tritonhcugpu-coalesce-async-copy", "mlir::ModuleOp"> {
   let summary = "Improve coalescing for async global to local copies";
 
   let description = [{
@@ -251,7 +251,7 @@ def TritonAMDGPUCoalesceAsyncCopy: Pass<"tritonamdgpu-coalesce-async-copy", "mli
   ];
 }
 
-def TritonAMDGPUUpdateAsyncWaitCount: Pass<"tritonamdgpu-update-async-wait-count", "mlir::ModuleOp"> {
+def TritonHCUGPUUpdateAsyncWaitCount: Pass<"tritonhcugpu-update-async-wait-count", "mlir::ModuleOp"> {
   let summary = "Adjust async wait count to allow prefetching over multiple loop iterations";
 
   let description = [{
@@ -260,7 +260,7 @@ def TritonAMDGPUUpdateAsyncWaitCount: Pass<"tritonamdgpu-update-async-wait-count
       compute the number of interleaving global memory instructions to emit the correct waitcnt during lowering.
   }];
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
   let options = [
     Option<"archGenerationName", "arch-generation-name",
@@ -269,7 +269,7 @@ def TritonAMDGPUUpdateAsyncWaitCount: Pass<"tritonamdgpu-update-async-wait-count
   ];
 }
 
-def TritonAMDFoldTrueCmpI: Pass<"tritonamdgpu-fold-true-cmpi", "mlir::ModuleOp"> {
+def TritonAMDFoldTrueCmpI: Pass<"tritonhcugpu-fold-true-cmpi", "mlir::ModuleOp"> {
   let summary = "Fold true arith.cmpi to %true";
 
   let description = [{
@@ -277,7 +277,7 @@ def TritonAMDFoldTrueCmpI: Pass<"tritonamdgpu-fold-true-cmpi", "mlir::ModuleOp">
   }];
 }
 
-def TritonAMDGPUOptimizeDotOperands : Pass<"tritonamdgpu-optimize-dot-operands", "mlir::ModuleOp"> {
+def TritonHCUGPUOptimizeDotOperands : Pass<"tritonhcugpu-optimize-dot-operands", "mlir::ModuleOp"> {
   let summary = "Optimize shared memory use for dot operands";
 
   let description = [{
@@ -285,7 +285,7 @@ def TritonAMDGPUOptimizeDotOperands : Pass<"tritonamdgpu-optimize-dot-operands",
   }];
 
   let dependentDialects = ["mlir::triton::gpu::TritonGPUDialect",
-                           "mlir::triton::amdgpu::TritonAMDGPUDialect",
+                           "mlir::triton::hcugpu::TritonHCUGPUDialect",
                            "mlir::triton::TritonDialect"];
   let options = [
     Option<"archGenerationName", "arch-generation-name",
@@ -298,7 +298,7 @@ def TritonAMDGPUOptimizeDotOperands : Pass<"tritonamdgpu-optimize-dot-operands",
 // =================================================================================================
 // HCU Pass
 
-def TritonAMDGPUMlsStreamPipeline : Pass<"tritonamdgpu-mls-stream-pipeline", "mlir::ModuleOp"> {
+def TritonHCUGPUMlsStreamPipeline : Pass<"tritonhcugpu-mls-stream-pipeline", "mlir::ModuleOp"> {
   let summary = "Pipeline MatrixLoad to shared memory async";
 
   let description = [{
@@ -306,7 +306,7 @@ def TritonAMDGPUMlsStreamPipeline : Pass<"tritonamdgpu-mls-stream-pipeline", "ml
     tile
   }];
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
   let options = [
     Option<"numStages", "num_stages",
@@ -321,7 +321,7 @@ def TritonAMDGPUMlsStreamPipeline : Pass<"tritonamdgpu-mls-stream-pipeline", "ml
   ];
 }
 
-def TritonAMDGPUMlsEncodingInsertion: Pass<"tritonamdgpu-mls-encoding-insertion", "mlir::ModuleOp"> {
+def TritonHCUGPUMlsEncodingInsertion: Pass<"tritonhcugpu-mls-encoding-insertion", "mlir::ModuleOp"> {
   let summary = "Insert MlsEncoding to the matrix_load instruction";
 
   let description = "This pass insert MlsEncoding attribute to the matrix_load instruction";
@@ -329,12 +329,12 @@ def TritonAMDGPUMlsEncodingInsertion: Pass<"tritonamdgpu-mls-encoding-insertion"
   let dependentDialects = [];
 }
 
-def TritonAMDGPUMlsLowering: Pass<"tritonamdgpu-mls-lowering", "mlir::ModuleOp"> {
+def TritonHCUGPUMlsLowering: Pass<"tritonhcugpu-mls-lowering", "mlir::ModuleOp"> {
   let summary = "Lower matrix_load to the matrix_load_to_local instruction";
 
   let description = "This pass lower matrix_load to the matrix_load_to_local instruction";
 
-  let dependentDialects = ["mlir::triton::amdgpu::TritonAMDGPUDialect"];
+  let dependentDialects = ["mlir::triton::hcugpu::TritonHCUGPUDialect"];
 }
 
 #endif

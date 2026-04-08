@@ -1,5 +1,5 @@
-#ifndef TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTRANSFORMS_MLSGROUP_H_
-#define TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTRANSFORMS_MLSGROUP_H_
+#ifndef TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTRANSFORMS_MLSGROUP_H_
+#define TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTRANSFORMS_MLSGROUP_H_
 
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "llvm/ADT/DenseMap.h"
@@ -8,7 +8,7 @@
 namespace mlir {
 
 //===----------------------------------------------------------------------===//
-// AMDGPU MLS instruction selection utilities
+// HCUGPU MLS instruction selection utilities
 //===----------------------------------------------------------------------===//
 
 // flags: lsb: elem3 | row3 << 8 | col3 << 16 | alt2 << 24  msb
@@ -92,4 +92,4 @@ public:
 
 } // namespace mlir
 
-#endif // TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTRANSFORMS_MLSGROUP_H_
+#endif // TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTRANSFORMS_MLSGROUP_H_

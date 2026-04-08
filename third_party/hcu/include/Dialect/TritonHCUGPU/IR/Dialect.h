@@ -21,8 +21,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef TRITON_THIRD_PARTY_AMD_INCLUDE_DIALECT_TRITONAMDGPU_IR_DIALECT_H_
-#define TRITON_THIRD_PARTY_AMD_INCLUDE_DIALECT_TRITONAMDGPU_IR_DIALECT_H_
+#ifndef TRITON_THIRD_PARTY_HCU_INCLUDE_DIALECT_TRITONHCUGPU_IR_DIALECT_H_
+#define TRITON_THIRD_PARTY_HCU_INCLUDE_DIALECT_TRITONHCUGPU_IR_DIALECT_H_
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -34,15 +34,15 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
 // clang-format off
-#include "amd/include/Dialect/TritonAMDGPU/IR/Dialect.h.inc"
-#include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUEnums.h.inc"
+#include "hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h.inc"
+#include "hcu/include/Dialect/TritonHCUGPU/IR/TritonHCUGPUEnums.h.inc"
 // clang-format on
 
 #define GET_ATTRDEF_CLASSES
-#include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.h.inc"
+#include "hcu/include/Dialect/TritonHCUGPU/IR/TritonHCUGPUAttrDefs.h.inc"
 
-#include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUOpInterfaces.h.inc"
+#include "hcu/include/Dialect/TritonHCUGPU/IR/TritonHCUGPUOpInterfaces.h.inc"
 #define GET_OP_CLASSES
-#include "amd/include/Dialect/TritonAMDGPU/IR/Ops.h.inc"
+#include "hcu/include/Dialect/TritonHCUGPU/IR/Ops.h.inc"
 
-#endif // TRITON_THIRD_PARTY_AMD_INCLUDE_DIALECT_TRITONAMDGPU_IR_DIALECT_H_
+#endif // TRITON_THIRD_PARTY_HCU_INCLUDE_DIALECT_TRITONHCUGPU_IR_DIALECT_H_

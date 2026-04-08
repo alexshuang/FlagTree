@@ -1,3 +1,3 @@
 add_subdirectory(Dialect)
-add_subdirectory(TritonAMDGPUToLLVM)
-add_subdirectory(TritonAMDGPUTransforms)
+add_subdirectory(TritonHCUGPUToLLVM)
+add_subdirectory(TritonHCUGPUTransforms)

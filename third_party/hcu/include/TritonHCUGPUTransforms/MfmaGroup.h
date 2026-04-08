@@ -1,13 +1,13 @@
-#ifndef TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTRANSFORMS_MFMAGROUP_H_
-#define TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTRANSFORMS_MFMAGROUP_H_
+#ifndef TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTRANSFORMS_MFMAGROUP_H_
+#define TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTRANSFORMS_MFMAGROUP_H_
 
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/StringRef.h"
-#include "TritonAMDGPUToLLVM/TargetUtils.h"
+#include "TritonHCUGPUToLLVM/TargetUtils.h"
 
 namespace mlir {
-using mlir::triton::AMD::HCUISAFeature;
+using mlir::triton::HCU::HCUISAFeature;
 
 // Returns true if the given type is an OCP FP8/FP6/FP6 type.
 inline bool isF8F6F4(mlir::Type type) {
@@ -58,4 +58,4 @@ struct MfmaIntrinsic {
 };
 } // namespace mlir
 
-#endif // TRITON_THIRD_PARTY_AMD_INCLUDE_TRITONAMDGPUTRANSFORMS_MFMAGROUP_H_
+#endif // TRITON_THIRD_PARTY_HCU_INCLUDE_TRITONHCUGPUTRANSFORMS_MFMAGROUP_H_

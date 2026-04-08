@@ -22,8 +22,8 @@
  */
 
 
-#ifndef TRITON_AMDGPU_OPS
-#define TRITON_AMDGPU_OPS
+#ifndef TRITON_HCUGPU_OPS
+#define TRITON_HCUGPU_OPS
 
 include "mlir/IR/OpBase.td"
 include "triton/Dialect/Triton/IR/TritonDialect.td"
@@ -39,13 +39,13 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
-include "TritonAMDGPUDialect.td"
-include "TritonAMDGPUAttrDefs.td"
-include "TritonAMDGPUOpInterfaces.td"
+include "TritonHCUGPUDialect.td"
+include "TritonHCUGPUAttrDefs.td"
+include "TritonHCUGPUOpInterfaces.td"
 
 
-class TT_AMDGPU_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TritonAMDGPU_Dialect, mnemonic, !listconcat(traits, [])>;
+class TT_HCUGPU_Op<string mnemonic, list<Trait> traits = []> :
+    Op<TritonHCUGPU_Dialect, mnemonic, !listconcat(traits, [])>;
 
 //
 // Interfaces
@@ -57,7 +57,7 @@ def SharedMemory : Resource<"::mlir::triton::gpu::SharedMemory">;
 // ExtractSliceOp
 //===----------------------------------------------------------------------===//
 
-def ExtractSliceOp : TT_AMDGPU_Op<"extract_slice", [Pure]> {
+def ExtractSliceOp : TT_HCUGPU_Op<"extract_slice", [Pure]> {
   let summary = "extract slice operation";
   let description = [{
     The "extract_slice" operation enables extracting a slice of a tensor in
@@ -125,7 +125,7 @@ def ExtractSliceOp : TT_AMDGPU_Op<"extract_slice", [Pure]> {
     %1 = ttg.convert_layout %0 : tensor<128x128xf16, #blocked>
         -> tensor<128x128xf16, #blocked1>
     // create a slice of base tensor %1 with static offsets
-    %2 = amdg.extract_slice %0 [0, 0] :
+    %2 = hcug.extract_slice %0 [0, 0] :
       tensor<128x128xf16, #blocked1> to tensor<128x32xf16, #blocked1>
     ```
 
@@ -163,7 +163,7 @@ def ExtractSliceOp : TT_AMDGPU_Op<"extract_slice", [Pure]> {
   let hasCanonicalizer = 1;
 }
 
-def ConcatOp : TT_AMDGPU_Op<"concat", [Pure]> {
+def ConcatOp : TT_HCUGPU_Op<"concat", [Pure]> {
   let summary = "concat operation";
   let description = [{
     The "concat" operation combines a list of source n-dimensional tensors into a single larger destination tensor.
@@ -208,7 +208,7 @@ def ConcatOp : TT_AMDGPU_Op<"concat", [Pure]> {
     ```mlir
     #blocked = #ttg.blocked<{sizePerThread = [1, 8],
         threadsPerWarp = [8, 8], warpsPerCTA = [4, 1], order = [1, 0]}>
-    %0 = amdg.concat %arg0, %arg1: tensor<32x64xf32, #blocked>,tensor<32x64xf32, #blocked>,
+    %0 = hcug.concat %arg0, %arg1: tensor<32x64xf32, #blocked>,tensor<32x64xf32, #blocked>,
       -> tensor<64x64xf32, #blocked>
     ```
 
@@ -216,7 +216,7 @@ def ConcatOp : TT_AMDGPU_Op<"concat", [Pure]> {
     ```mlir
     #src_layout = #ttg.linear<{register=[[0, 1], [0, 2], [0, 8], [0, 16], [0, 64], [64, 0]], lane=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 4]], warp=[[0, 32], [32, 0]], block=[]}>
     #dst_layout = #ttg.linear<{register=[[0, 1], [0, 2], [0, 8], [0, 16], [0, 64], [0, 128], [64, 0], [128, 0]], lane=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 4]], warp=[[0, 32], [32, 0]], block=[]}>
-    %0 = amdg.concat %arg0, %arg1, %arg2, %arg3 : tensor<128x128xf16, #src_layout>, tensor<128x128xf16, #src_layout>, tensor<128x128xf16, #src_layout>,
+    %0 = hcug.concat %arg0, %arg1, %arg2, %arg3 : tensor<128x128xf16, #src_layout>, tensor<128x128xf16, #src_layout>, tensor<128x128xf16, #src_layout>,
                                                     tensor<128x128xf16, #src_layout> -> tensor<256x256xf16, #dst_layout>
     ```
 
@@ -237,7 +237,7 @@ def ConcatOp : TT_AMDGPU_Op<"concat", [Pure]> {
 // InstructionSchedHint
 //===----------------------------------------------------------------------===//
 
-def InstructionSchedHint : TT_AMDGPU_Op<"instruction_sched_hint", []> {
+def InstructionSchedHint : TT_HCUGPU_Op<"instruction_sched_hint", []> {
   let summary = "A placeholder op for instruction scheduling hints within a basic block";
   let description = [{
     A placeholder op for instruction scheduling hints applied to instructions within
@@ -245,12 +245,12 @@ def InstructionSchedHint : TT_AMDGPU_Op<"instruction_sched_hint", []> {
     to be used to adjust instruction scheduling inside the resulting main loop
     of a `tt.dot` operation. It's easier to identify dot ops at a high level and, thus,
     to mark intended scheduling regions. The hint ops are eventually lowered
-    into LLVM AMDGPU instruction scheduling primitives, which are meant to control
+    into LLVM HCUGPU instruction scheduling primitives, which are meant to control
     how different kinds of instructions (valu/mfma, global/shared memory, etc.) should
     interleave for better instruction level parallelism.
   }];
 
-  let arguments = (ins TritonAMDGPU_SchedHintVariantAttr:$variant);
+  let arguments = (ins TritonHCUGPU_SchedHintVariantAttr:$variant);
 
   let assemblyFormat = [{ attr-dict }];
 }
@@ -259,7 +259,7 @@ def InstructionSchedHint : TT_AMDGPU_Op<"instruction_sched_hint", []> {
 // CondBarrierOp
 //===----------------------------------------------------------------------===//
 
-def CondBarrierOp : TT_AMDGPU_Op<"cond_barrier"> {
+def CondBarrierOp : TT_HCUGPU_Op<"cond_barrier"> {
   let summary = "Conditionally set barriers to synchronize partial threads in a block";
 
   let description = [{
@@ -281,7 +281,7 @@ def CondBarrierOp : TT_AMDGPU_Op<"cond_barrier"> {
 // BufferLoadOp
 //===----------------------------------------------------------------------===//
 
-def BufferLoadOp : TT_AMDGPU_Op<"buffer_load", [
+def BufferLoadOp : TT_HCUGPU_Op<"buffer_load", [
   SameLoadStoreOperandsAndResultEncoding,
   AttrSizedOperandSegments,
   BufferOpInterface,
@@ -294,7 +294,7 @@ def BufferLoadOp : TT_AMDGPU_Op<"buffer_load", [
 ]>{
     let summary = "Load from a scalar base pointer and a tensor offset";
     let description = [{
-      AMD Buffer load operation. Buffer store is similar to
+      HCU Buffer load operation. Buffer store is similar to
       a normal store but it accesses global memory via a scalar base pointer
       and a tensor of offsets instead of a tensor of pointers. The other fields
       are similar to a normal load, i.e., the `mask` is a boolean vector that
@@ -328,7 +328,7 @@ def BufferLoadOp : TT_AMDGPU_Op<"buffer_load", [
 // BufferLoadToLocalOp
 //===----------------------------------------------------------------------===//
 
-def BufferLoadToLocalOp : TT_AMDGPU_Op<"buffer_load_to_local", [
+def BufferLoadToLocalOp : TT_HCUGPU_Op<"buffer_load_to_local", [
   AttrSizedOperandSegments,
   BufferOpInterface,
   TypesMatchWith<"dest element type matches pointee type of ptr", "dest", "ptr", "getPointerTypeToElement($_self)">,
@@ -341,7 +341,7 @@ def BufferLoadToLocalOp : TT_AMDGPU_Op<"buffer_load_to_local", [
 ]>{
     let summary = "Load from a scalar base pointer and a tensor offset to shared memory";
     let description = [{
-      AMD Buffer load operation. Similar to amdg.buffer_load op but directly wirtes to shared memory instead of into registers.
+      HCU Buffer load operation. Similar to hcug.buffer_load op but directly wirtes to shared memory instead of into registers.
       Contiguity is the maximum number of elements that can be loaded in a single vector with the given layout and mask.
       This allows to use buffer_load_to_local even if the alignment cannot be proven based on IR.
     }];
@@ -368,7 +368,7 @@ def BufferLoadToLocalOp : TT_AMDGPU_Op<"buffer_load_to_local", [
 // BufferAtomicRMWOp
 //===----------------------------------------------------------------------===//
 
-def BufferAtomicRMWOp : TT_AMDGPU_Op<"buffer_atomic_rmw", [
+def BufferAtomicRMWOp : TT_HCUGPU_Op<"buffer_atomic_rmw", [
   AttrSizedOperandSegments,
   SameLoadStoreOperandsAndResultEncoding,
   BufferOpInterface,
@@ -384,7 +384,7 @@ def BufferAtomicRMWOp : TT_AMDGPU_Op<"buffer_atomic_rmw", [
 ]>{
     let summary = "Atomic RMW op which reads, modifies, and writes to a scalar base pointer and a tensor offset";
     let description = [{
-        AMD Buffer atomic RMW operation. Buffer atomics are similar to normal atomics, but access global memory via a
+        HCU Buffer atomic RMW operation. Buffer atomics are similar to normal atomics, but access global memory via a
         scalar base pointer and a tensor of offsets instead of a tensor of pointers.
         Similar to other buffer ops, the `mask` is a boolean vector that determines if a given element should be processed with
         the atomic RMW op. Elements with `mask[i] == 0` are dropped (i.e., the atomic is not executed).
@@ -416,7 +416,7 @@ def BufferAtomicRMWOp : TT_AMDGPU_Op<"buffer_atomic_rmw", [
 //===----------------------------------------------------------------------===//
 // BufferAtomicCASOp
 //===----------------------------------------------------------------------===//
-def BufferAtomicCASOp : TT_AMDGPU_Op<"buffer_atomic_cas", [
+def BufferAtomicCASOp : TT_HCUGPU_Op<"buffer_atomic_cas", [
   SameLoadStoreOperandsAndResultEncoding,
   BufferOpInterface,
   TypesMatchWith<"result element type matches the val type", "result", "val", "$_self">,
@@ -428,7 +428,7 @@ def BufferAtomicCASOp : TT_AMDGPU_Op<"buffer_atomic_cas", [
 ]>{
     let summary = "Atomic CAS op which does compare-exchange to a scalar base pointer and a tensor offset";
     let description = [{
-        AMD Buffer Atomic CAS operation. Buffer atomics are similar to normal atomics, but access global memory via a
+        HCU Buffer Atomic CAS operation. Buffer atomics are similar to normal atomics, but access global memory via a
         scalar base pointer and a tensor of offsets instead of a tensor of pointers.
         Similar to TT_AtomicCASOp: Buffer atomic CAS op loads data at $ptr, and stores $val to $ptr atomically if value at $ptr equals $cmp, with
         the specified memory semantics and scope. Atomic CAS ops return the pre-op value if used, otherwise the value is implicitly dropped.
@@ -458,7 +458,7 @@ def BufferAtomicCASOp : TT_AMDGPU_Op<"buffer_atomic_cas", [
 // BufferStoreOp
 //===----------------------------------------------------------------------===//
 
-def BufferStoreOp : TT_AMDGPU_Op<"buffer_store", [
+def BufferStoreOp : TT_HCUGPU_Op<"buffer_store", [
   AttrSizedOperandSegments,
   SameLoadStoreOperandsEncoding,
   BufferOpInterface,
@@ -469,7 +469,7 @@ def BufferStoreOp : TT_AMDGPU_Op<"buffer_store", [
 ]>{
     let summary = "Store into scalar base pointer and a tensor offset";
     let description = [{
-      AMD Buffer store operation. Buffer store is similar to
+      HCU Buffer store operation. Buffer store is similar to
       normal store but it accesses global memory via a scalar base pointer
       and a tensor of offsets instead of a tensor of pointers. The other fields
       are similar to a normal store , i.e., the `mask` is a boolean vector that
@@ -502,7 +502,7 @@ def BufferStoreOp : TT_AMDGPU_Op<"buffer_store", [
 // UpcastMXFPOp
 //===----------------------------------------------------------------------===//
 
-def TTG_UpcastMXFPOp : TT_AMDGPU_Op<"upcast_mxfp", [Pure]> {
+def TTG_UpcastMXFPOp : TT_HCUGPU_Op<"upcast_mxfp", [Pure]> {
   let summary = "Convert an mxfp tensor to bf16/fp16";
 
   let hasVerifier = 1;
@@ -533,7 +533,7 @@ def TTG_UpcastMXFPOp : TT_AMDGPU_Op<"upcast_mxfp", [Pure]> {
 //===----------------------------------------------------------------------===//
 // MaskedLoadOp
 //===----------------------------------------------------------------------===//
-def MaskedLoadOp : TT_AMDGPU_Op<"masked_load", []> {
+def MaskedLoadOp : TT_HCUGPU_Op<"masked_load", []> {
   let summary = "Masked load operation";
   let description = [{
     Load operation with masking and multicast support. If the mask is true, loads from the given pointer. Works with LLVM types as a utility op for making LLVM conversion easier.
@@ -562,7 +562,7 @@ def MaskedLoadOp : TT_AMDGPU_Op<"masked_load", []> {
 //===----------------------------------------------------------------------===//
 // MaskedStoreOp
 //===----------------------------------------------------------------------===//
-def MaskedStoreOp : TT_AMDGPU_Op<"masked_store", []> {
+def MaskedStoreOp : TT_HCUGPU_Op<"masked_store", []> {
   let summary = "Masked Store operation";
   let description = [{
     Store operation with masking support. If the mask is true, Store from the given pointer. Works with LLVM types as a utility op for making LLVM conversion easier.
@@ -587,13 +587,13 @@ def MaskedStoreOp : TT_AMDGPU_Op<"masked_store", []> {
 // ScaledUpcastFp4Op
 //===----------------------------------------------------------------------===//
 
-def ScaledUpcastFp4Op : TT_AMDGPU_Op<"scaled_upcast_fp4", [Pure, DeclareOpInterfaceMethods<UpcastFpOpInterface>]> {
+def ScaledUpcastFp4Op : TT_HCUGPU_Op<"scaled_upcast_fp4", [Pure, DeclareOpInterfaceMethods<UpcastFpOpInterface>]> {
   let summary = "Upcast fp4 and then multiply scale";
 
   let description = [{
     Upcast fp4 (e2m1) values packed as i8 values and multiply with the given
     E8M0 scale encoded as BF16. This maps to `v_cvt_scalef32_*` intrinsics
-    on the AMD CDNA4 architecture.
+    on the HCU CDNA4 architecture.
 
     The lower 4 bits of the i8s represent the first fp4 element, and the upper
     4 bits the second fp4 element.
@@ -620,7 +620,7 @@ def ScaledUpcastFp4Op : TT_AMDGPU_Op<"scaled_upcast_fp4", [Pure, DeclareOpInterf
 // ScaledUpcastFp8Op
 //===----------------------------------------------------------------------===//
 
-def ScaledUpcastFp8Op : TT_AMDGPU_Op<"scaled_upcast_fp8", [
+def ScaledUpcastFp8Op : TT_HCUGPU_Op<"scaled_upcast_fp8", [
     Pure,
     Elementwise,
     SameOperandsAndResultShape,
@@ -631,7 +631,7 @@ def ScaledUpcastFp8Op : TT_AMDGPU_Op<"scaled_upcast_fp8", [
   let description = [{
     Upcast fp8 (e4m3/e5m2) values and multiply with the given E8M0 scale
     encoded as BF16. This maps to `v_cvt_scalef32_*` intrinsics
-    on the AMD CDNA4 architecture.
+    on the HCU CDNA4 architecture.
   }];
 
   let arguments = (ins
@@ -648,7 +648,7 @@ def ScaledUpcastFp8Op : TT_AMDGPU_Op<"scaled_upcast_fp8", [
 // InThreadTransposeOp
 //===----------------------------------------------------------------------===//
 
-def InThreadTransposeOp : TT_AMDGPU_Op<"in_thread_transpose", [Pure]> {
+def InThreadTransposeOp : TT_HCUGPU_Op<"in_thread_transpose", [Pure]> {
   let summary = "Perform transpose of register values belonging to each threads";
 
   let hasVerifier = 1;
@@ -663,7 +663,7 @@ def InThreadTransposeOp : TT_AMDGPU_Op<"in_thread_transpose", [Pure]> {
     * output layout: same thread and warp bases as in input, register bases = [[0, 1], [0, 2], [1, 0], [2, 0]]
 
     This operation enables efficient coalesced loading from HBM with following vectorized writing to shared memory
-    in cases when HBM and shared memory order differ and target AMD hardware does not natively support this transposition.
+    in cases when HBM and shared memory order differ and target HCU hardware does not natively support this transposition.
     This is a specific variant of ttg.convert_layout and will be converted to ttg.convert_layout when lowering to llvm.
     We do not want this conversion to be optimized out, because we need to explicitly materialize instructions
     to transpose within each thread after loading from HBM and before writing to shared memory.
@@ -685,7 +685,7 @@ def InThreadTransposeOp : TT_AMDGPU_Op<"in_thread_transpose", [Pure]> {
 // LocalLoadPackedTransposedOp
 //===----------------------------------------------------------------------===//
 
-def LocalLoadPackedTransposedOp : TT_AMDGPU_Op<"local_load_packed_tranposed", [LocalLoadTrait]> {
+def LocalLoadPackedTransposedOp : TT_HCUGPU_Op<"local_load_packed_tranposed", [LocalLoadTrait]> {
     let summary = "Load a transposed packed tensor from shared memory into a distributed tensor";
     let description = [{
       Requires a M/N packed and M/N contiguous tensor in shared memory and will yield a K packed K contiguous tensor in registers.
@@ -710,7 +710,7 @@ def LocalLoadPackedTransposedOp : TT_AMDGPU_Op<"local_load_packed_tranposed", [L
 }
 
 
-def MatrixLoadToLocalOp : TT_AMDGPU_Op<"matrix_load_to_local", [AttrSizedOperandSegments]> {
+def MatrixLoadToLocalOp : TT_HCUGPU_Op<"matrix_load_to_local", [AttrSizedOperandSegments]> {
   let summary = "matrix load from global memory to local memory";
   let description = [{
     This operation load matrix data from global memory to local memory asynchronously.
@@ -748,7 +748,7 @@ def MatrixLoadToLocalOp : TT_AMDGPU_Op<"matrix_load_to_local", [AttrSizedOperand
 // AsyncTDMCopyGlobalToLocalOp
 //===----------------------------------------------------------------------===//
 
-def AsyncTDMCopyGlobalToLocalOp : TT_AMDGPU_Op<"async_tdm_copy_global_to_local", [AttrSizedOperandSegments]> {
+def AsyncTDMCopyGlobalToLocalOp : TT_HCUGPU_Op<"async_tdm_copy_global_to_local", [AttrSizedOperandSegments]> {
   let summary = "Copy data based on descriptor from global memory to local memory asynchronously";
 
   let description = [{
@@ -790,7 +790,7 @@ def AsyncTDMCopyGlobalToLocalOp : TT_AMDGPU_Op<"async_tdm_copy_global_to_local",
 // AsyncTDMCopyLocalToGlobalOp
 //===----------------------------------------------------------------------===//
 
-def AsyncTDMCopyLocalToGlobalOp : TT_AMDGPU_Op<"async_tdm_copy_local_to_global"> {
+def AsyncTDMCopyLocalToGlobalOp : TT_HCUGPU_Op<"async_tdm_copy_local_to_global"> {
   let summary = "Copy data based on descriptor from local memory to global memory asynchronously";
 
   let description = [{
@@ -819,7 +819,7 @@ def AsyncTDMCopyLocalToGlobalOp : TT_AMDGPU_Op<"async_tdm_copy_local_to_global">
 // AsyncTDMWait
 //===----------------------------------------------------------------------===//
 
-def AsyncTDMWait : TT_AMDGPU_Op<"async_tdm_wait"> {
+def AsyncTDMWait : TT_HCUGPU_Op<"async_tdm_wait"> {
   let summary = "Wait until there are less than or equal to the given number of outstanding TDM operations";
   let arguments = (ins Variadic<TTG_AsyncToken>:$asyncToken, I32Attr:$num);
   let description = [{
@@ -836,12 +836,12 @@ def AsyncTDMWait : TT_AMDGPU_Op<"async_tdm_wait"> {
 // AsyncWait
 //===----------------------------------------------------------------------===//
 
-def AsyncWaitOp : TT_AMDGPU_Op<"async_wait"> {
+def AsyncWaitOp : TT_HCUGPU_Op<"async_wait"> {
   let summary = "Wait until there are less than or equal to the given number of outstanding async intrinsics";
   let description = [{
     Similar to ttg.async_wait but instead of waiting on oustanding ttg.async_commit_groups
     this op waits on the number of outstanding async instructions/intrinsics as required for the
-    lowering to LLVM on the AMD backend.
+    lowering to LLVM on the HCU backend.
   }];
 
   let arguments = (ins Variadic<TTG_AsyncToken>:$asyncToken, I32Attr:$num_inst);
@@ -853,7 +853,7 @@ def AsyncWaitOp : TT_AMDGPU_Op<"async_wait"> {
 // MemoryCounterWait
 //===----------------------------------------------------------------------===//
 
-def MemoryCounterWaitOp : TT_AMDGPU_Op<"memory_counter_wait"> {
+def MemoryCounterWaitOp : TT_HCUGPU_Op<"memory_counter_wait"> {
   let summary = "Wait for specified hardware counters";
   let description = [{
     Wait for the specified counters to be less-than or equal-to the provided
@@ -879,7 +879,7 @@ def MemoryCounterWaitOp : TT_AMDGPU_Op<"memory_counter_wait"> {
 // InitBarrierOp
 //===----------------------------------------------------------------------===//
 
-def InitBarrierOp : TT_AMDGPU_Op<"init_barrier"> {
+def InitBarrierOp : TT_HCUGPU_Op<"init_barrier"> {
   let summary = "Initialize a barrier in the given shared memory allocation.";
 
   let description = [{
@@ -900,7 +900,7 @@ def InitBarrierOp : TT_AMDGPU_Op<"init_barrier"> {
 // WaitBarrierOp
 //===----------------------------------------------------------------------===//
 
-def WaitBarrierOp : TT_AMDGPU_Op<"wait_barrier"> {
+def WaitBarrierOp : TT_HCUGPU_Op<"wait_barrier"> {
   let summary = "wait until the mbarrier phase completes.";
 
   let description = [{
@@ -922,7 +922,7 @@ def WaitBarrierOp : TT_AMDGPU_Op<"wait_barrier"> {
 //===----------------------------------------------------------------------===//
 // ArriveBarrierOp
 //===----------------------------------------------------------------------===//
-def ArriveBarrierOp : TT_AMDGPU_Op<"arrive_barrier"> {
+def ArriveBarrierOp : TT_HCUGPU_Op<"arrive_barrier"> {
   let summary = "perform the arrive operation on an mbarrier";
   let description = [{
     Performs the "arrive" operation on an mbarrier object in shared memory. The operation requires a `count` attribute
@@ -955,7 +955,7 @@ def ArriveBarrierOp : TT_AMDGPU_Op<"arrive_barrier"> {
 // AsyncCopyMbarrierArriveOp
 //===----------------------------------------------------------------------===//
 
-def AsyncCopyMbarrierArriveOp : TT_AMDGPU_Op<"async_copy_mbarrier_arrive"> {
+def AsyncCopyMbarrierArriveOp : TT_HCUGPU_Op<"async_copy_mbarrier_arrive"> {
   let summary = "arrive on mbarrier once all previously issued copies are completed";
   let description = [{
     Performs the "async arrive" operation by decrementing pending account by 1 when all previous async load to LDS (particularly, not TDM) have completed.

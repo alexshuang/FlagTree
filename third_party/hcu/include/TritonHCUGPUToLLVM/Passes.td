@@ -1,11 +1,11 @@
-#ifndef TRITONAMDGPU_CONVERSION_PASSES
-#define TRITONAMDGPU_CONVERSION_PASSES
+#ifndef TRITONHCUGPU_CONVERSION_PASSES
+#define TRITONHCUGPU_CONVERSION_PASSES
 
 include "mlir/Pass/PassBase.td"
 
-def OptimizeAMDLDSUsage : Pass<"optimize-amd-lds-usage", "mlir::ModuleOp"> {
+def OptimizeAMDLDSUsage : Pass<"optimize-hcu-lds-usage", "mlir::ModuleOp"> {
     let summary = "Minimize LDS usage";
-    let constructor = "mlir::triton::AMD::createOptimizeLDSUsagePass(\"\")";
+    let constructor = "mlir::triton::HCU::createOptimizeLDSUsagePass(\"\")";
 
     let options = [
         Option<"targetArch", "target-arch", "std::string", /*default*/"",
@@ -15,7 +15,7 @@ def OptimizeAMDLDSUsage : Pass<"optimize-amd-lds-usage", "mlir::ModuleOp"> {
     ];
 }
 
-def AllocateAMDGPUSharedMemory : Pass<"allocate-amdgpu-shared-memory", "mlir::ModuleOp"> {
+def AllocateHCUGPUSharedMemory : Pass<"allocate-hcugpu-shared-memory", "mlir::ModuleOp"> {
   let summary = "Add metadata for shared memory allocation";
 
   let description = [{
@@ -26,9 +26,9 @@ def AllocateAMDGPUSharedMemory : Pass<"allocate-amdgpu-shared-memory", "mlir::Mo
   }];
 }
 
-def ConvertTritonAMDGPUToLLVM : Pass<"convert-triton-amdgpu-to-llvm", "mlir::ModuleOp"> {
+def ConvertTritonHCUGPUToLLVM : Pass<"convert-triton-hcugpu-to-llvm", "mlir::ModuleOp"> {
     let summary = "Convert TritonGPU to LLVM";
-    let constructor = "mlir::triton::createConvertTritonAMDGPUToLLVMPass(\"\", /*ftz=*/true)";
+    let constructor = "mlir::triton::createConvertTritonHCUGPUToLLVMPass(\"\", /*ftz=*/true)";
 
     let dependentDialects = ["mlir::arith::ArithDialect",
                              "mlir::math::MathDialect",
@@ -59,12 +59,12 @@ def ConvertBuiltinFuncToLLVM : Pass<"convert-builtin-func-to-llvm", "mlir::Modul
     ];
 }
 
-def TritonAMDGPUInsertInstructionSchedHints : Pass<"triton-amdgpu-insert-instruction-sched-hints", "mlir::ModuleOp"> {
+def TritonHCUGPUInsertInstructionSchedHints : Pass<"triton-hcugpu-insert-instruction-sched-hints", "mlir::ModuleOp"> {
     let summary = "Insert instruction scheduling hints after the dot ops in the main loop";
-    let constructor = "mlir::triton::createTritonAMDGPUInsertInstructionSchedHintsPass(/*variant=*/\"\")";
+    let constructor = "mlir::triton::createTritonHCUGPUInsertInstructionSchedHintsPass(/*variant=*/\"\")";
 
     let dependentDialects = ["mlir::LLVM::LLVMDialect",
-                             "mlir::triton::amdgpu::TritonAMDGPUDialect"];
+                             "mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
     let options = [
         Option<"variant", "variant", "std::string", /*default*/"\"none\"",
@@ -72,13 +72,13 @@ def TritonAMDGPUInsertInstructionSchedHints : Pass<"triton-amdgpu-insert-instruc
     ];
 }
 
-def TritonAMDGPULowerInstructionSchedHints : Pass<"triton-amdgpu-lower-insert-instruction-sched-hints", "mlir::ModuleOp"> {
+def TritonHCUGPULowerInstructionSchedHints : Pass<"triton-hcugpu-lower-insert-instruction-sched-hints", "mlir::ModuleOp"> {
     let summary = "Lower instruction scheduling hints to LLVM intrinsics";
-    let constructor = "mlir::triton::createTritonAMDGPULowerInstructionSchedHintsPass(/*arch=*/\"\",/*numStages=*/2)";
+    let constructor = "mlir::triton::createTritonHCUGPULowerInstructionSchedHintsPass(/*arch=*/\"\",/*numStages=*/2)";
 
     let dependentDialects = ["mlir::LLVM::LLVMDialect",
                              "mlir::ROCDL::ROCDLDialect",
-                             "mlir::triton::amdgpu::TritonAMDGPUDialect"];
+                             "mlir::triton::hcugpu::TritonHCUGPUDialect"];
 
     let options = [
         Option<"arch", "arch", "std::string", /*default*/"\"\"",
@@ -88,9 +88,9 @@ def TritonAMDGPULowerInstructionSchedHints : Pass<"triton-amdgpu-lower-insert-in
     ];
 }
 
-def AMDGPUConvertWarpSpecializeToLLVM : Pass<"triton-amdgpu-convert-warp-specialize-to-llvm", "mlir::ModuleOp"> {
+def HCUGPUConvertWarpSpecializeToLLVM : Pass<"triton-hcugpu-convert-warp-specialize-to-llvm", "mlir::ModuleOp"> {
   let summary = "lower `ttg.warp_specialize` to LLVM";
-  let constructor = "mlir::triton::createAMDGPUConvertWarpSpecializeToLLVM(\"\", 4, 8, true, 32, 32, 32)";
+  let constructor = "mlir::triton::createHCUGPUConvertWarpSpecializeToLLVM(\"\", 4, 8, true, 32, 32, 32)";
   let description = [{
     The `convert-warp-specialize-to-llvm` pass performs codegen for warp
     specialization. It is a function-level transformation that rewrites
@@ -99,7 +99,7 @@ def AMDGPUConvertWarpSpecializeToLLVM : Pass<"triton-amdgpu-convert-warp-special
   }];
   let dependentDialects = ["mlir::LLVM::LLVMDialect",
                           "mlir::ROCDL::ROCDLDialect",
-                          "mlir::triton::amdgpu::TritonAMDGPUDialect"];
+                          "mlir::triton::hcugpu::TritonHCUGPUDialect"];
   let options = [
         Option<"arch", "arch", "std::string", /*default*/"\"\"",
                "gfx target device architecture, e.g., gfx942">,

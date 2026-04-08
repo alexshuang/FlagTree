@@ -21,17 +21,17 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef TRITON_AMDGPU_DIALECT
-#define TRITON_AMDGPU_DIALECT
+#ifndef TRITON_HCUGPU_DIALECT
+#define TRITON_HCUGPU_DIALECT
 
 include "mlir/IR/OpBase.td"
 
-def TritonAMDGPU_Dialect : Dialect {
-  let name = "amdg";
-  let cppNamespace = "::mlir::triton::amdgpu";
+def TritonHCUGPU_Dialect : Dialect {
+  let name = "hcug";
+  let cppNamespace = "::mlir::triton::hcugpu";
 
   let description = [{
-    TritonAMDGPU Dialect hosts AMD specific ops at TritonGPU abstraction level.
+    TritonHCUGPU Dialect hosts HCU specific ops at TritonGPU abstraction level.
   }];
 
   let dependentDialects = ["triton::TritonDialect"];

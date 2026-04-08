@@ -14,4 +14,4 @@ add_triton_library(ProtonGPUToLLVM
 )
 
 add_subdirectory(ProtonNvidiaGPUToLLVM)
-add_subdirectory(ProtonAMDGPUToLLVM)
+add_subdirectory(ProtonHCUGPUToLLVM)

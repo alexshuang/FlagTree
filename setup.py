@@ -459,7 +459,7 @@ class CMakeBuild(build_ext):
         cmake_args += ["-DCUPTI_INCLUDE_DIR=" + cupti_include_dir]
         roctracer_include_dir = get_env_with_keys(["TRITON_ROCTRACER_INCLUDE_PATH"])
         if roctracer_include_dir == "":
-            roctracer_include_dir = os.path.join(get_base_dir(), "third_party", "amd", "backend", "include")
+            roctracer_include_dir = os.path.join(get_base_dir(), "third_party", "hcu", "backend", "include")
         cmake_args += ["-DROCTRACER_INCLUDE_DIR=" + roctracer_include_dir]
         return cmake_args
 

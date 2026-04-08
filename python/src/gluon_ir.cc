@@ -8,7 +8,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Types.h"
-#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
+#include "third_party/hcu/include/Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "triton/Analysis/Utility.h"
 #include "triton/Dialect/Gluon/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -29,7 +29,7 @@ namespace tt = triton;
 namespace ttg = triton::gpu;
 namespace ttng = triton::nvidia_gpu;
 namespace gluon = mlir::triton::gluon;
-namespace ttag = mlir::triton::amdgpu;
+namespace ttag = mlir::triton::hcugpu;
 
 static ttg::CTAEncodingAttr
 buildCtaLayoutAttr(MLIRContext *ctx,
@@ -133,8 +133,8 @@ struct GluonLayouts {
   py::handle NVMMASharedLayout;
   py::handle SwizzledSharedLayout;
   py::handle SharedLinearLayout;
-  py::handle AMDMFMALayout;
-  py::handle AMDWMMALayout;
+  py::handle HCUMFMALayout;
+  py::handle HCUWMMALayout;
   py::handle PaddedSharedLayout;
 
   GluonLayouts() {
@@ -162,8 +162,8 @@ struct GluonLayouts {
         py::object(layouts.attr("SwizzledSharedLayout")).release();
     SharedLinearLayout =
         py::object(layouts.attr("SharedLinearLayout")).release();
-    AMDMFMALayout = py::object(amdLayouts.attr("AMDMFMALayout")).release();
-    AMDWMMALayout = py::object(amdLayouts.attr("AMDWMMALayout")).release();
+    HCUMFMALayout = py::object(amdLayouts.attr("HCUMFMALayout")).release();
+    HCUWMMALayout = py::object(amdLayouts.attr("HCUWMMALayout")).release();
     PaddedSharedLayout =
         py::object(layouts.attr("PaddedSharedLayout")).release();
 
@@ -250,14 +250,14 @@ py::object layoutToGluon(Attribute layout) {
     return layouts.CoalescedLayout();
   } else if (auto amdMfma = dyn_cast<ttg::AMDMfmaEncodingAttr>(layout)) {
     auto cgaBases = getCgaLayoutBases(amdMfma.getCTALayout());
-    return layouts.AMDMFMALayout(
+    return layouts.HCUMFMALayout(
         amdMfma.getVersion(), toStdVector(amdMfma.getInstrShape()),
         amdMfma.getIsTransposed(), toStdVector(amdMfma.getWarpsPerCTA()),
         amdMfma.getElementBitWidth(), toStdVector(amdMfma.getTilesPerWarp()),
         cgaBases);
   } else if (auto amdWmma = dyn_cast<ttg::AMDWmmaEncodingAttr>(layout)) {
     auto cgaBases = getCgaLayoutBases(amdWmma.getCTALayout());
-    return layouts.AMDWMMALayout(
+    return layouts.HCUWMMALayout(
         amdWmma.getVersion(), amdWmma.getIsTransposed(),
         toStdVector(amdWmma.getWarpsPerCTA()),
         toStdVector(amdWmma.getInstrShape()),

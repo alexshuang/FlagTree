@@ -38,6 +38,8 @@ elseif(FLAGTREE_BACKEND STREQUAL "aipu")
 elseif(FLAGTREE_BACKEND STREQUAL "tsingmicro")
   set(CMAKE_C_COMPILER clang)
   set(CMAKE_CXX_COMPILER clang++)
+elseif(FLAGTREE_BACKEND STREQUAL "hcu")
+  add_definitions(-D__HCU__)
 endif()
 set(FLAGTREE_PLUGIN "$ENV{FLAGTREE_PLUGIN}")
 if(FLAGTREE_PLUGIN)
@@ -192,7 +194,7 @@ if(NOT MSVC)
   if(FLAGTREE_BACKEND)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default")
     # For enflame backend, suppress visibility warnings in gluon_ir.cc
-    if(FLAGTREE_BACKEND STREQUAL "enflame")
+    if (FLAGTREE_BACKEND MATCHES "^(enflame|hcu)$")
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes")
     endif()
   else()
@@ -235,6 +237,15 @@ endif()
 
 
 # -----
+# triton distributed
+if(TRITON_BUILD_PYTHON_MODULE)
+  message(STATUS "Adding Python module for TritonDistributed")
+  set(PYTHON_DIST_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/python/src/dist)
+  add_triton_plugin(TritonDistributed ${PYTHON_DIST_SRC_PATH}/triton_distributed.cc
+                                      ${PYTHON_DIST_SRC_PATH}/passes.cc
+                                      ${PYTHON_DIST_SRC_PATH}/ir.cc)
+  target_link_libraries(TritonDistributed PRIVATE DistributedIR SIMTIR ProtonIR Python3::Module pybind11::headers)
+endif()
 
 # ------
 if(TRITON_BUILD_PYTHON_MODULE)
@@ -386,6 +397,10 @@ if(TRITON_BUILD_PYTHON_MODULE)
       LLVMRISCVCodeGen
       LLVMRISCVAsmParser
     )
+  elseif(FLAGTREE_BACKEND STREQUAL "hcu")
+    add_subdirectory(third_party/nvidia)
+    list(APPEND TRITON_PLUGIN_NAMES "distributed")
+    add_subdirectory(test)
   endif()
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR # Linux arm64

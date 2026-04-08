@@ -1,10 +1,12 @@
+#include "Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "TritonHCUGPUToLLVM/Passes.h"
 #include "TritonHCUGPUToLLVM/TargetUtils.h"
-#include "TritonHCUTransforms/Passes.h"
+#include "TritonHCUGPUTransforms/Passes.h"
+#include "lib/TritonHCUGPUToLLVM/TargetInfo.h"
+#include "lld/Common/Driver.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "passes.h"
-#include "triton/Dialect/TritonHCUGPU/IR/Dialect.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -27,7 +29,12 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/TargetParser/TargetParser.h"
+#include <array>
+#include <optional>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
+#include <sstream>
 #include <stdexcept>
 
 namespace py = pybind11;
@@ -35,27 +42,24 @@ namespace py = pybind11;
 namespace {
 const char *const hcuTargetTriple = "amdgcn-amd-amdhsa";
 
-void init_triton_hcu_passes_ttgpuir(py::module &&m) {
+void init_triton_amd_passes_ttgpuir(py::module &&m) {
   using namespace mlir::triton;
   m.def("add_to_llvmir",
         [](mlir::PassManager &pm, const std::string &arch, bool ftz) {
           pm.addPass(createConvertTritonHCUGPUToLLVMPass(arch, ftz));
         });
-  m.def("add_builtin_func_to_llvmir", [](mlir::PassManager &pm) {
-    pm.addPass(createConvertBuiltinFuncToLLVMPass());
+  m.def("add_builtin_func_to_llvmir", [](mlir::PassManager &pm, bool ftz) {
+    pm.addPass(createConvertBuiltinFuncToLLVMPass(ftz));
   });
-  m.def("insert_instruction_sched_hints", [](mlir::PassManager &pm) {
-    pm.addPass(createInsertInstructionSchedHintsPass());
+  m.def("insert_instruction_sched_hints", [](mlir::PassManager &pm,
+                                             const std::string &variant) {
+    pm.addPass(createTritonHCUGPUInsertInstructionSchedHintsPass(variant));
   });
   m.def("lower_instruction_sched_hints",
-        [](mlir::PassManager &pm, std::string variant) {
-          pm.addPass(createLowerInstructionSchedHintsPass(variant));
+        [](mlir::PassManager &pm, const std::string &arch, int32_t numStages) {
+          pm.addPass(createTritonHCUGPULowerInstructionSchedHintsPass(
+              arch, numStages));
         });
-  m.def("add_decompose_unsupported_conversions", [](mlir::PassManager &pm,
-                                                    const std::string &arch) {
-    pm.addPass(
-        mlir::triton::HCU::createDecomposeUnsupportedConversionsPass(arch));
-  });
   ADD_PASS_WRAPPER_2("add_optimize_lds_usage",
                      mlir::triton::HCU::createOptimizeLDSUsagePass,
                      const std::string &, int32_t);
@@ -65,30 +69,65 @@ void init_triton_hcu_passes_ttgpuir(py::module &&m) {
                      mlir::createTritonHCUGlobalToLocalSwizzlePass);
   ADD_PASS_WRAPPER_0("add_move_load_tofront_dot",
                      mlir::createTritonHCUMoveLoadToFrontOfDOTPass);
-  ADD_PASS_WRAPPER_5("add_accelerate_matmul",
-                     mlir::createTritonHCUGPUAccelerateMatmulPass,
-                     const std::string, int, int, int, int);
+  ADD_PASS_WRAPPER_0("add_allocate_shared_memory",
+                     mlir::triton::createAllocateHCUGPUSharedMemory);
+  ADD_PASS_OPTION_WRAPPER_4("add_accelerate_matmul",
+                            mlir::createTritonHCUGPUAccelerateMatmul,
+                            const std::string, int, int, int);
   ADD_PASS_WRAPPER_0("add_optimize_epilogue",
-                     mlir::createTritonHCUGPUOptimizeEpiloguePass);
-  ADD_PASS_WRAPPER_0("add_canonicalize_pointers",
-                     mlir::createTritonHCUGPUCanonicalizePointersPass);
-  ADD_PASS_WRAPPER_0("add_convert_to_buffer_ops",
-                     mlir::createTritonHCUGPUConvertToBufferOpsPass);
+                     mlir::createTritonHCUGPUOptimizeEpilogue);
+  ADD_PASS_OPTION_WRAPPER_1(
+      "add_optimize_dot_operands",
+      mlir::triton::amdgpu::createTritonHCUGPUOptimizeDotOperands,
+      const std::string &);
+  m.def("add_hoist_layout_conversions", [](mlir::PassManager &pm) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        mlir::createTritonHCUGPUHoistLayoutConversions());
+  });
+  m.def("add_canonicalize_pointers", [](mlir::PassManager &pm) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        mlir::createTritonHCUGPUCanonicalizePointers());
+  });
+  ADD_PASS_OPTION_WRAPPER_3("add_convert_to_buffer_ops",
+                            mlir::createTritonHCUGPUConvertToBufferOps,
+                            const std::string &, bool, bool);
   ADD_PASS_WRAPPER_0("add_reorder_instructions",
-                     mlir::createTritonHCUGPUReorderInstructionsPass);
-  ADD_PASS_WRAPPER_0("add_stream_pipeline",
-                     mlir::createTritonHCUGPUStreamPipelinePass);
-  ADD_PASS_WRAPPER_1("add_stream_pipelinev2",
-                     mlir::createTritonHCUGPUStreamPipelineV2Pass, int);
-  ADD_PASS_WRAPPER_4("add_hcu_stream_pipeline",
-                     mlir::createTritonHCUStreamPipelinePass, int, int, int,
-                     bool);
-  ADD_PASS_WRAPPER_1("add_control_fa_fwd_bufferload_cnt",
-                     mlir::createTritonHCUFaFwdControlCntPass, int);
-  ADD_PASS_WRAPPER_1("add_fa_fwd_insert_wait",
-                     mlir::createTritonHCUFaFwdWaitPass, int);
-  ADD_PASS_WRAPPER_0("add_update_async_wait_count",
-                     mlir::createTritonHCUUpdateAsyncWaitCountPass);
+                     mlir::createTritonHCUGPUReorderInstructions);
+  ADD_PASS_WRAPPER_0("add_fold_true_cmpi", mlir::createTritonAMDFoldTrueCmpI);
+  ADD_PASS_OPTION_WRAPPER_1("add_block_pingpong",
+                            mlir::createTritonHCUGPUBlockPingpong, int32_t);
+  ADD_PASS_OPTION_WRAPPER_1("add_schedule_loops",
+                            mlir::createTritonHCUGPUScheduleLoops, int);
+  ADD_PASS_OPTION_WRAPPER_2("add_pipeline", mlir::createTritonHCUGPUPipeline,
+                            bool, bool);
+  ADD_PASS_OPTION_WRAPPER_1("add_coalesce_async_copy",
+                            mlir::createTritonHCUGPUCoalesceAsyncCopy,
+                            std::string);
+  ADD_PASS_OPTION_WRAPPER_1("add_update_async_wait_count",
+                            mlir::createTritonHCUGPUUpdateAsyncWaitCount,
+                            std::string);
+  m.def("add_in_thread_transpose", [](mlir::PassManager &pm) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        mlir::createTritonHCUGPUInThreadTranspose());
+  });
+  ADD_PASS_OPTION_WRAPPER_3("add_mls_stream_pipeline",
+                            mlir::createTritonHCUGPUMlsStreamPipeline, int, int, int);
+  ADD_PASS_WRAPPER_0("add_mls_encoding_insertion",
+                     mlir::createTritonHCUGPUMlsEncodingInsertion);
+  ADD_PASS_WRAPPER_0("add_mls_lowering_pass",
+                     mlir::createTritonHCUGPUMlsLowering);
+  m.def("add_warp_specialize_to_llvm", [](mlir::PassManager &pm, const std::string &arch,
+      int waspNumLoadWarps, int waspNumMmaWarps, bool wdraEnabled, int wdraNumLoadRegs, 
+      int wdraNumMmaRegsMain, int wdraNumMmaRegsTail) {
+    pm.addPass(createHCUGPUConvertWarpSpecializeToLLVM(
+        arch,
+        waspNumLoadWarps,
+        waspNumMmaWarps,
+        wdraEnabled,
+        wdraNumLoadRegs,
+        wdraNumMmaRegsMain,
+        wdraNumMmaRegsTail));
+  });
 }
 
 void addControlConstant(llvm::Module *module, const char *name,
@@ -107,13 +146,36 @@ void addControlConstant(llvm::Module *module, const char *name,
   constant->setUnnamedAddr(GlobalVariable::UnnamedAddr::Local);
   constant->setVisibility(GlobalVariable::VisibilityTypes::ProtectedVisibility);
 }
+
 } // namespace
+
+LLD_HAS_DRIVER(elf)
+
+static std::optional<std::string> lldInvoke(const char *inPath,
+                                            const char *outPath) {
+  // Workaround: Disable parallelism to avoid hangs caused by LLVM's thread pool
+  // when the following code is executed in a forked child process.
+  // Context: lld::elf::LinkerDriver::link uses parallelFor which uses the
+  // LLVM's thread pool. During cleanup at ~TaskGroup() the child process hangs
+  // waiting.
+  std::array args{"ld.lld", "--threads=1", "-shared", inPath, "-o", outPath};
+  std::string errString;
+  llvm::raw_string_ostream errStream(errString);
+  auto lldRes = lld::lldMain(args, llvm::outs(), llvm::errs(),
+                             {{lld::Gnu, &lld::elf::link}});
+  bool noErrors = (!lldRes.retCode && lldRes.canRunAgain);
+  if (!noErrors) {
+    errStream.flush();
+    return errString;
+  }
+  return {};
+}
 
 void init_triton_hcu(py::module &&m) {
   m.doc() = "Python bindings to the HCU Triton backend";
 
   auto passes = m.def_submodule("passes");
-  init_triton_hcu_passes_ttgpuir(passes.def_submodule("ttgpuir"));
+  init_triton_amd_passes_ttgpuir(passes.def_submodule("ttgpuir"));
 
   m.attr("TARGET_TRIPLE") = hcuTargetTriple;
   m.attr("CALLING_CONV_HCUGPU_KERNEL") =
@@ -128,8 +190,9 @@ void init_triton_hcu(py::module &&m) {
     context.loadAllAvailableDialects();
   });
 
-  m.def("attach_target_triple",
-        [](llvm::Module *module) { module->setTargetTriple(hcuTargetTriple); });
+  m.def("attach_target_triple", [](llvm::Module *module) {
+    module->setTargetTriple(llvm::Triple(hcuTargetTriple));
+  });
 
   // Set target architecture ISA version
   m.def("set_isa_version", [](llvm::Module *module, const std::string &arch) {
@@ -176,6 +239,24 @@ void init_triton_hcu(py::module &&m) {
       module->eraseNamedMetadata(openclVersion);
   });
 
+  m.def("disable_print_inline", [](llvm::Module *module) {
+    // List of functions name prefixes we want to forbid inline.
+    std::array<const char *, 2> prefixes = {"__ockl_fprintf", "__ockl_printf"};
+
+    for (llvm::Function &f : module->functions()) {
+      if (!f.hasName())
+        continue;
+      llvm::StringRef name = f.getName();
+
+      auto isNamePrefixed = [&name](const char *prefix) {
+        return name.starts_with(prefix);
+      };
+
+      if (llvm::any_of(prefixes, isNamePrefixed))
+        f.addFnAttr(llvm::Attribute::NoInline);
+    }
+  });
+
   m.def(
       "assemble_amdgcn",
       [](const std::string &assembly, const std::string &arch,
@@ -184,7 +265,7 @@ void init_triton_hcu(py::module &&m) {
 
         llvm::Triple triple(hcuTargetTriple);
         const llvm::Target *target =
-            llvm::TargetRegistry::lookupTarget(triple.normalize(), error);
+            llvm::TargetRegistry::lookupTarget(triple, error);
         if (!target)
           throw std::runtime_error("target lookup error: " + error);
 
@@ -194,11 +275,11 @@ void init_triton_hcu(py::module &&m) {
 
         const llvm::MCTargetOptions mcOptions;
         std::unique_ptr<llvm::MCRegisterInfo> mri(
-            target->createMCRegInfo(hcuTargetTriple));
+            target->createMCRegInfo(triple));
         std::unique_ptr<llvm::MCAsmInfo> mai(
-            target->createMCAsmInfo(*mri, hcuTargetTriple, mcOptions));
+            target->createMCAsmInfo(*mri, triple, mcOptions));
         std::unique_ptr<llvm::MCSubtargetInfo> sti(
-            target->createMCSubtargetInfo(hcuTargetTriple, arch, features));
+            target->createMCSubtargetInfo(triple, arch, features));
 
         llvm::MCContext ctx(triple, mai.get(), mri.get(), sti.get(), &srcMgr,
                             &mcOptions);
@@ -239,6 +320,22 @@ void init_triton_hcu(py::module &&m) {
       },
       py::return_value_policy::take_ownership);
 
+  m.def("has_architected_sgprs", [](const std::string &arch) {
+    std::string error;
+    llvm::Triple triple(hcuTargetTriple);
+    const llvm::Target *target =
+        llvm::TargetRegistry::lookupTarget(triple, error);
+    if (!target)
+      throw std::runtime_error("target lookup error: " + error);
+    std::unique_ptr<llvm::MCSubtargetInfo> sti(
+        target->createMCSubtargetInfo(triple, arch, ""));
+    return sti->checkFeatures("+architected-sgprs");
+  });
+
+  m.def("supports_multi_cta_launch", [](const std::string &arch) {
+    return mlir::triton::HCU::TargetInfo(arch).supportsMultiCTALaunch();
+  });
+
   m.def("need_extern_lib", [](llvm::Module *module, const std::string &lib) {
     for (llvm::Function &f : module->functions()) {
       if (f.hasExternalLinkage() && f.hasName() && !f.hasExactDefinition()) {
@@ -262,16 +359,24 @@ void init_triton_hcu(py::module &&m) {
     return false;
   });
 
-  m.def("has_matrix_core_feature", [](const std::string &arch) {
-    using mlir::triton::HCU::ISAFamily;
-    switch (mlir::triton::HCU::deduceISAFamily(arch)) {
-    case ISAFamily::CDNA3:
-    case ISAFamily::CDNA2:
-    case ISAFamily::CDNA1:
-    case ISAFamily::RDNA3:
-      return true;
-    default:
-      return false;
+  m.def("set_all_fn_arg_inreg", [](llvm::Function *fn) {
+    for (llvm::Argument &arg : fn->args()) {
+      // Check for incompatible attributes.
+      if (arg.hasByRefAttr() || arg.hasNestAttr())
+        continue;
+      arg.addAttr(llvm::Attribute::InReg);
     }
+  });
+
+  m.def("link_hsaco",
+        [](const std::string &inPath, const std::string &outPath) {
+          if (auto errString = lldInvoke(inPath.c_str(), outPath.c_str()))
+            throw std::runtime_error("LLD failed to link hsaco source " +
+                                     inPath + " into object file " + outPath +
+                                     " because " + errString.value());
+        });
+
+  m.def("add_scalarize_packed_fops_llvm_pass", [](llvm::Function *fn) {
+    mlir::triton::HCU::runScalarizePackedFOpsPass(*fn);
   });
 }

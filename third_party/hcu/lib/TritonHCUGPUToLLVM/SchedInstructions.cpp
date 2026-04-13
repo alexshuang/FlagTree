@@ -1,6 +1,6 @@
 #include "TritonHCUGPUToLLVM/Passes.h"
 #include "Utility.h"
-#include "mlir/Dialect/HCUGPU/IR/HCUGPUDialect.h"
+#include "mlir/Dialect/AMDGPU/IR/AMDGPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Pass/Pass.h"
@@ -31,7 +31,7 @@ namespace {
 // Insert intrinsic that controls the types of instructions that may be
 // allowed to cross the intrinsic during instruction scheduling.
 Operation *createSchedBarrier(PatternRewriter &rewriter, Location loc,
-                              mlir::hcugpu::sched_barrier_opt_enum maskValue) {
+                              mlir::amdgpu::sched_barrier_opt_enum maskValue) {
   IntegerAttr mask =
       rewriter.getI32IntegerAttr(static_cast<int32_t>(maskValue));
   return ROCDL::SchedBarrier::create(rewriter, loc, mask);
@@ -73,7 +73,7 @@ struct InstructionSchedHintsRewriter
     if (limitSchedulingRange) {
       rewriter.setInsertionPointToStart(block);
       createSchedBarrier(rewriter, loc,
-                         mlir::hcugpu::sched_barrier_opt_enum::none);
+                         mlir::amdgpu::sched_barrier_opt_enum::none);
     }
 
     rewriter.setInsertionPoint(block, std::prev(block->end()));
@@ -89,7 +89,7 @@ struct InstructionSchedHintsRewriter
 
     if (limitSchedulingRange)
       createSchedBarrier(rewriter, loc,
-                         mlir::hcugpu::sched_barrier_opt_enum::none);
+                         mlir::amdgpu::sched_barrier_opt_enum::none);
 
     rewriter.eraseOp(instructionSchedHint);
     return success();

@@ -664,7 +664,7 @@ public:
       tilesPerWarp.insert(tilesPerWarp.begin(), 1);
     }
 
-    ttg::HCUMfmaEncodingAttr mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+    ttg::AMDMfmaEncodingAttr mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
         oldRetType.getContext(), mfmaVersion, warpsPerTile, {mDim, nDim, kDim},
         isTransposed, CTALayout, tilesPerWarp,
         mfmaAccType.getIntOrFloatBitWidth());
@@ -854,7 +854,7 @@ public:
     // Always use transposed mfma layout. This enables larger vectorization
     // for global store instructions.
     auto elementBitWidth = oldRetType.getElementType().getIntOrFloatBitWidth();
-    auto mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+    auto mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
         ctx, mfmaVersion, mfmaWarpsPerCTA, {mDim, nDim, kDim},
         /*isTransposed=*/true, ctaLayout, {}, elementBitWidth);
 
@@ -937,9 +937,9 @@ public:
   }
 };
 
-class DecomposeAMDScaledBlocked final : public ttg::DecomposeScaledBlocked {
+class DecomposeHCUScaledBlocked final : public ttg::DecomposeScaledBlocked {
 public:
-  DecomposeAMDScaledBlocked(MLIRContext *context, PatternBenefit benefit = 1)
+  DecomposeHCUScaledBlocked(MLIRContext *context, PatternBenefit benefit = 1)
       : ttg::DecomposeScaledBlocked(context, benefit) {}
   using TensorValue = TypedValue<RankedTensorType>;
 
@@ -1097,7 +1097,7 @@ public:
     // Always use transposed mfma layout. This enables larger vectorization
     // for global store instructions.
     auto elementBitWidth = oldRetType.getElementType().getIntOrFloatBitWidth();
-    mlir::Attribute mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+    mlir::Attribute mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
         ctx, mfmaVersion, warpsPerTile, {mDim, nDim, kDim},
         /*isTransposed=*/true, ctaLayout, tilesPerWarp, elementBitWidth);
 
@@ -1292,10 +1292,10 @@ public:
     auto warpsPerTile =
         warpsPerTileWMMA(dotOp, oldShape, numWarps, {mDim, nDim});
 
-    auto wmmaEnc = ttg::HCUWmmaEncodingAttr::get(
+    auto wmmaEnc = ttg::AMDWmmaEncodingAttr::get(
         ctx, wmmaVersion, true, warpsPerTile, ctaLayout, {mDim, nDim, kDim});
     auto wmmaPackedEnc =
-        ttg::HCUWmmaEncodingAttr::get(ctx, wmmaVersion, true, warpsPerTile,
+        ttg::AMDWmmaEncodingAttr::get(ctx, wmmaVersion, true, warpsPerTile,
                                       ctaLayout, {mDim, nDim, kDim / 2});
 
     auto newRetType =
@@ -1399,7 +1399,7 @@ static void decomposeMixedModeDotOp(ModuleOp mod) {
     OpBuilder builder(dotOp);
     Type AElType = dotOp.getA().getType().getElementType();
     Type promoteType;
-    if (isa<ttg::HCUMfmaEncodingAttr>(D.getType().getEncoding())) {
+    if (isa<ttg::AMDMfmaEncodingAttr>(D.getType().getEncoding())) {
       Type BElType = dotOp.getB().getType().getElementType();
 
       auto maxBitWidth = std::max(AElType.getIntOrFloatBitWidth(),
@@ -1416,7 +1416,7 @@ static void decomposeMixedModeDotOp(ModuleOp mod) {
         promoteType = builder.getF16Type();
       else if (maxBitWidth <= 32)
         promoteType = builder.getF32Type();
-    } else if (isa<ttg::HCUWmmaEncodingAttr>(D.getType().getEncoding())) {
+    } else if (isa<ttg::AMDWmmaEncodingAttr>(D.getType().getEncoding())) {
       Type BElType = dotOp.getB().getType().getElementType();
 
       if (AElType == BElType)
@@ -1543,7 +1543,7 @@ public:
     // get WMMA encoding for the given number of warps
     int numWarps = ttg::lookupNumWarps(dotOp);
 
-    ttg::HCUWmmaEncodingAttr wmmaEnc;
+    ttg::AMDWmmaEncodingAttr wmmaEnc;
 
     auto warpsPerTile =
         warpsPerTileWMMA(dotOp, retShape, numWarps, {mDim, nDim});
@@ -1553,7 +1553,7 @@ public:
     // Use transposed wmma layout to enable larger vectorization for global
     // store instructions.
     bool isTransposed = true;
-    wmmaEnc = ttg::HCUWmmaEncodingAttr::get(ctx, wmmaVersion, isTransposed,
+    wmmaEnc = ttg::AMDWmmaEncodingAttr::get(ctx, wmmaVersion, isTransposed,
                                             warpsPerTile, CTALayout,
                                             {mDim, nDim, kDim});
 
@@ -1797,7 +1797,7 @@ struct TritonHCUGPUAccelerateMatmulPass
       mfmaPatterns.add<::ScaledBlockedToScaledMFMAF8F6F4>(
           context, getMfmaVersion(isaFamily), matrixInstructionSize,
           /*benefit=*/4);
-      mfmaPatterns.add<::DecomposeAMDScaledBlocked>(context, /*benefit=*/3);
+      mfmaPatterns.add<::DecomposeHCUScaledBlocked>(context, /*benefit=*/3);
       [[fallthrough]];
     case ISAFamily::CDNA3:
     case ISAFamily::CDNA2:

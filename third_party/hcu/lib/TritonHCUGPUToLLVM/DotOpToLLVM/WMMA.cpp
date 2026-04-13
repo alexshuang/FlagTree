@@ -31,7 +31,7 @@
 namespace mlir::triton::HCU {
 namespace {
 
-using ::mlir::triton::gpu::HCUWmmaEncodingAttr;
+using ::mlir::triton::gpu::AMDWmmaEncodingAttr;
 using ::mlir::triton::gpu::DotOperandEncodingAttr;
 using ::mlir::triton::gpu::LinearEncodingAttr;
 
@@ -218,7 +218,7 @@ Value generateWMMAOp(ConversionPatternRewriter &rewriter, Location loc,
 LogicalResult convertDot(DotOp op, DotOpAdaptor adaptor,
                          ConversionPatternRewriter &rewriter,
                          const LLVMTypeConverter *typeConverter) {
-  auto wmmaLayout = cast<HCUWmmaEncodingAttr>(
+  auto wmmaLayout = cast<AMDWmmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
   int wmmaVer = wmmaLayout.getVersion();
   auto warpsPerCTA = wmmaLayout.getWarpsPerCTA();
@@ -362,7 +362,7 @@ LogicalResult convertScaledDot(triton::DotScaledOp op,
                                triton::DotScaledOp::Adaptor adaptor,
                                ConversionPatternRewriter &rewriter,
                                const LLVMTypeConverter *typeConverter) {
-  auto wmmaLayout = cast<HCUWmmaEncodingAttr>(
+  auto wmmaLayout = cast<AMDWmmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
   int wmmaVer = wmmaLayout.getVersion();
   assert(wmmaVer == 3 && "Scaled dot not supported for wmma1/wmma2");
@@ -516,7 +516,7 @@ LogicalResult convertWMMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
 
   auto cTensorTy = rankedTType(op.getC());
   auto dTensorTy = rankedTType(op.getD());
-  assert(isa<HCUWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
+  assert(isa<AMDWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
          "Currently, we only support $c with a wmma layout.");
 
   assert(cTensorTy.getShape()[0] == dTensorTy.getShape()[0] &&
@@ -536,7 +536,7 @@ LogicalResult convertScaledWMMA(triton::DotScaledOp op,
 
   auto cTensorTy = op.getC().getType();
   auto dTensorTy = op.getD().getType();
-  assert(isa<HCUWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
+  assert(isa<AMDWmmaEncodingAttr>(cTensorTy.getEncoding()) &&
          "Currently, we only support C with a wmma layout.");
 
   assert(cTensorTy.getShape()[0] == dTensorTy.getShape()[0] &&
@@ -544,7 +544,7 @@ LogicalResult convertScaledWMMA(triton::DotScaledOp op,
          "DotOp's C operand should pass the same number of values as D.");
 
   auto loc = op.getLoc();
-  auto wmmaLayout = cast<HCUWmmaEncodingAttr>(
+  auto wmmaLayout = cast<AMDWmmaEncodingAttr>(
       cast<RankedTensorType>(op.getResult().getType()).getEncoding());
   return convertScaledDot(op, adaptor, rewriter, typeConverter);
 }

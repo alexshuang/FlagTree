@@ -1,4 +1,4 @@
-add_triton_library(TritonAMDUtils
+add_triton_library(TritonHCUUtils
   CommonUtils.cpp
 
   LINK_LIBS PUBLIC

@@ -1,5 +1,5 @@
 add_triton_library(TritonHCUGPUTransforms
-  # AccelerateAMDMatmul.cpp
+  # AccelerateHCUMatmul.cpp
   BlockPingpong.cpp
   CanonicalizePointers.cpp
   CoalesceAsyncCopy.cpp
@@ -29,8 +29,8 @@ add_triton_library(TritonHCUGPUTransforms
   TritonHCUGPUIR
   TritonHCUGPUTransformsIncGen
   TritonGPUIR
-  TritonAMDUtils
-  TritonAMDAnalysis
+  TritonHCUUtils
+  TritonHCUAnalysis
 )
 
 target_include_directories(TritonHCUGPUTransforms PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../include)

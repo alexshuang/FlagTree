@@ -685,7 +685,7 @@ public:
     Attribute dstLayout = dstTy.getEncoding();
     if (isa<triton::gpu::HCUMlsSharedEncodingAttr>(srcLayout)) {
       if (isa<DotOperandEncodingAttr>(dstLayout) &&
-          isa<HCUMfmaEncodingAttr>(
+          isa<AMDMfmaEncodingAttr>(
               cast<DotOperandEncodingAttr>(dstLayout).getParent())) {
         return lowerMLSSharedToDotOperand(op, adaptor, getTypeConverter(),
                                         rewriter);
@@ -724,7 +724,7 @@ private:
 
     Value res;
     auto opIdx = dotOperandLayout.getOpIdx();
-    auto mfmaLayout = cast<HCUMfmaEncodingAttr>(dotOperandLayout.getParent());
+    auto mfmaLayout = cast<AMDMfmaEncodingAttr>(dotOperandLayout.getParent());
     Value threadId = getThreadId(rewriter, loc);
     if ((opIdx == 0 && mfmaLayout.getMfmaTile()[0] == mfmaLayout.getInstrShape()[0]) ||
         (opIdx == 1 && mfmaLayout.getMfmaTile()[1] == mfmaLayout.getInstrShape()[1])) {
@@ -758,7 +758,7 @@ private:
     int kDimIdx2D = opIdx == 0 ? 1 : 0;
     int nonKDimIdx2D = opIdx == 0 ? 0 : 1;
 
-    auto mfmaLayout = cast<HCUMfmaEncodingAttr>(encoding.getParent());
+    auto mfmaLayout = cast<AMDMfmaEncodingAttr>(encoding.getParent());
     assert(((opIdx==0 && mfmaLayout.getInstrsPerWarp()[0] == 1) ||
             (opIdx==1 && mfmaLayout.getInstrsPerWarp()[1] == 1)) &&
             "only support unit tiles per warp mfma layout!");
@@ -917,7 +917,7 @@ private:
     int kDimIdx2D = opIdx == 0 ? 1 : 0;
     int nonKDimIdx2D = opIdx == 0 ? 0 : 1;
 
-    auto mfmaLayout = cast<HCUMfmaEncodingAttr>(encoding.getParent());
+    auto mfmaLayout = cast<AMDMfmaEncodingAttr>(encoding.getParent());
     auto warpsPerCTA = mfmaLayout.getWarpsPerCTA();
 
     auto elemTy = tensorTy.getElementType();

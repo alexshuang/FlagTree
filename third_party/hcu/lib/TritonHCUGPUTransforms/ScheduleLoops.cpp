@@ -88,7 +88,7 @@ namespace mlir {
 llvm::MapVector<Operation *, std::pair<int, Operation *>>
 getIndirectLevel(triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                  scf::ForOp &forOp, int numStages) {
-  auto arch = getAMDArch(forOp->getParentOfType<ModuleOp>());
+  auto arch = getHCUArch(forOp->getParentOfType<ModuleOp>());
   triton::HCU::ISAFamily isaFamily = triton::HCU::ISAFamily::Unknown;
   if (arch)
     isaFamily = triton::HCU::deduceISAFamily(*arch);

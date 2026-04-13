@@ -3,7 +3,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def OptimizeAMDLDSUsage : Pass<"optimize-hcu-lds-usage", "mlir::ModuleOp"> {
+def OptimizeHCULDSUsage : Pass<"optimize-hcu-lds-usage", "mlir::ModuleOp"> {
     let summary = "Minimize LDS usage";
     let constructor = "mlir::triton::HCU::createOptimizeLDSUsagePass(\"\")";
 

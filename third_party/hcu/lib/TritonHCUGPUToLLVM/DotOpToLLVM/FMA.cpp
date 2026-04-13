@@ -30,7 +30,7 @@ class HCUFMAVectorMultiplier : public FMAVectorMultiplier {
     auto dOpTy = cast<RankedTensorType>(op.getD().getType());
     auto dElemTy = dOpTy.getElementType();
     auto mod = op->getParentOfType<ModuleOp>();
-    auto arch = getAMDArch(mod);
+    auto arch = getHCUArch(mod);
     assert(arch.has_value() && "expected arch");
     DotIntrinsic chosenOp;
 
@@ -125,7 +125,7 @@ public:
 
 namespace mlir::triton::HCU {
 
-LogicalResult convertAMDFMADot(DotOp op, DotOp::Adaptor adaptor,
+LogicalResult convertHCUFMADot(DotOp op, DotOp::Adaptor adaptor,
                                const LLVMTypeConverter *typeConverter,
                                ConversionPatternRewriter &rewriter) {
   HCUFMAVectorMultiplier multiplier(rewriter, op);

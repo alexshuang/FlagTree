@@ -185,7 +185,7 @@ StreamCopyChainOps createStreamCopy(tt::LoadOp loadOp, Value alloc,
 
 // Returns the given |inputValue|'s dot user result encoding and updates |opIdx|
 // with which dot operand |inputValue| is fed into if possible.
-ttg::HCUMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx) {
+ttg::AMDMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx) {
   if (!inputValue.hasOneUse())
     return nullptr;
 
@@ -198,14 +198,14 @@ ttg::HCUMfmaEncodingAttr getDotEncoding(Value inputValue, unsigned *opIdx) {
     OpOperand &use = *inputValue.getUses().begin();
     *opIdx = use.getOperandNumber();
     auto dotType = cast<RankedTensorType>(dotOp->getResult(0).getType());
-    return dyn_cast<ttg::HCUMfmaEncodingAttr>(dotType.getEncoding());
+    return dyn_cast<ttg::AMDMfmaEncodingAttr>(dotType.getEncoding());
   }
   return getDotEncoding(user->getResult(0), opIdx);
 }
 
 // Adapted from
 // lib/Dialect/TritonGPU/Transforms/Utility.cpp::getSharedEncIfAllUsersAreDotEnc
-// to support HCUMfmaEncodingAttr.
+// to support AMDMfmaEncodingAttr.
 // TODO(max): figure out how to refactor to use upstream
 //
 // If all the transitive uses of the given value have are used by a convert to
@@ -360,7 +360,7 @@ createStreamOps(const LoadToInfoMap &loadToInfo, scf::ForOp &forOp,
     Value alloc = triton::createAlloc(forOp, ty, loadOp->getLoc(),
                                       info.sharedEncoding, numBuffers);
     assert(alloc && "Failed to create alloc for the async load.");
-    auto arch = getAMDArch(loadOp->getParentOfType<ModuleOp>());
+    auto arch = getHCUArch(loadOp->getParentOfType<ModuleOp>());
     triton::HCU::TargetInfo targetInfo(arch ? arch->str() : "");
 
     // Replace the old load with multi-buffered loads
@@ -379,7 +379,7 @@ createStreamOps(const LoadToInfoMap &loadToInfo, scf::ForOp &forOp,
 LoadToInfoMap
 preprocessLoop(triton::HCU::ModuleAxisInfoAnalysis &axisInfoAnalysis,
                scf::ForOp &forOp, int numStages) {
-  auto arch = getAMDArch(forOp->getParentOfType<ModuleOp>());
+  auto arch = getHCUArch(forOp->getParentOfType<ModuleOp>());
   triton::HCU::ISAFamily isaFamily = triton::HCU::ISAFamily::Unknown;
   if (arch)
     isaFamily = triton::HCU::deduceISAFamily(*arch);

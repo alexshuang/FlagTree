@@ -192,7 +192,7 @@ if(NOT MSVC)
   if(FLAGTREE_BACKEND)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default")
     # For enflame backend, suppress visibility warnings in gluon_ir.cc
-    if(FLAGTREE_BACKEND STREQUAL "enflame")
+    if (FLAGTREE_BACKEND MATCHES "^(enflame|hcu)$")
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes")
     endif()
   else()
@@ -216,7 +216,7 @@ include_directories(${PROJECT_SOURCE_DIR}/third_party)
 include_directories(${PROJECT_BINARY_DIR}/third_party) # Tablegen'd files
 
 # link_directories(${LLVM_LIBRARY_DIR})
-if (FLAGTREE_BACKEND MATCHES "^(cambricon|aipu|tsingmicro|enflame)$")
+if (FLAGTREE_BACKEND MATCHES "^(cambricon|aipu|tsingmicro|enflame|hcu)$")
   include_directories(${PROJECT_SOURCE_DIR}/include)
   include_directories(${PROJECT_BINARY_DIR}/include) # Tablegen'd files
   add_subdirectory(include)
@@ -386,6 +386,9 @@ if(TRITON_BUILD_PYTHON_MODULE)
       LLVMRISCVCodeGen
       LLVMRISCVAsmParser
     )
+  elseif(FLAGTREE_BACKEND STREQUAL "hcu")
+    add_subdirectory(third_party/nvidia)
+    add_subdirectory(third_party/amd)
   endif()
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR # Linux arm64
@@ -483,7 +486,7 @@ find_package(Threads REQUIRED)
 
 add_subdirectory(third_party/f2reduce)
 
-if(NOT FLAGTREE_BACKEND OR FLAGTREE_BACKEND MATCHES "^(aipu|tsingmicro|enflame)$")
+if(NOT FLAGTREE_BACKEND OR FLAGTREE_BACKEND MATCHES "^(aipu|tsingmicro|enflame|hcu)$")
   add_subdirectory(bin)
   add_subdirectory(test)
 endif()

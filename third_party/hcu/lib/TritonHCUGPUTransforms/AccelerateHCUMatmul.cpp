@@ -305,8 +305,8 @@ getCompatibleDotOpEncoding(int opIdx,
   if (kWidthA == kWidthB)
       return std::nullopt;
 
-  auto mfmaLayoutA = dyn_cast<HCUMfmaEncodingAttr>(dotAEncoding.getParent());
-  auto mfmaLayoutB = dyn_cast<HCUMfmaEncodingAttr>(dotBEncoding.getParent());
+  auto mfmaLayoutA = dyn_cast<AMDMfmaEncodingAttr>(dotAEncoding.getParent());
+  auto mfmaLayoutB = dyn_cast<AMDMfmaEncodingAttr>(dotBEncoding.getParent());
   assert(mfmaLayoutA == mfmaLayoutB && "dotA and dotB should have the same mfma layout");
 
   auto ctx = dotAEncoding.getParent().getContext();
@@ -940,14 +940,14 @@ public:
     auto aElemTy = mfmaInstr->aElementType;
     auto is16BitElemTy = (aElemTy.isF16() || aElemTy.isBF16());
 
-    // ttg::HCUMfmaEncodingAttr mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+    // ttg::AMDMfmaEncodingAttr mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
     //     oldRetType.getContext(),
     //     /*version*/ mfmaVersion, warpsPerTile,
     //     /*instrShape*/ mDim, nDim, /*isTransposed=*/isTransposed, CTALayout,
     //     mfmaAccType);
     // HCU: Transposed mfma layout is an HCU-specific feature which is NOT avaiable on all HCUs.
     isTransposed = false;
-    ttg::HCUMfmaEncodingAttr mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+    ttg::AMDMfmaEncodingAttr mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
         oldRetType.getContext(), /*verison=*/mfmaVersion, warpsPerTile,
         {mDim, nDim, kDim}, /*isTransposed=*/isTransposed, CTALayout,
         tilesPerWarp, mfmaAccType.getIntOrFloatBitWidth(),
@@ -1167,7 +1167,7 @@ public:
 
     // Always use transposed mfma layout. This enables larger vectorization
     // for global store instructions.
-    auto mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+    auto mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
         ctx, /*version=*/mfmaVersion, mfmaWarpsPerCTA, {mDim, nDim, kDim},
         /*isTransposed=*/true, ctaLayout, {},
         oldRetType.getElementType().getIntOrFloatBitWidth());
@@ -1395,12 +1395,12 @@ public:
     // for global store instructions.
     mlir::Attribute mfmaEnc;
     if (llvm::any_of(tilesPerWarp, [](int x) { return x != 1; })) {
-      mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+      mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
           ctx, /*verison=*/mfmaVersion, warpsPerTile, {mDim, nDim, kDim},
           /*isTransposed=*/true, ctaLayout, tilesPerWarp,
           oldRetType.getElementType().getIntOrFloatBitWidth());
     } else {
-      mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+      mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
           ctx, /*verison=*/mfmaVersion, warpsPerTile, {mDim, nDim, kDim},
           /*isTransposed=*/true, ctaLayout, {},
           oldRetType.getElementType().getIntOrFloatBitWidth());
@@ -1554,7 +1554,7 @@ static void decomposeMixedModeDotOp(ModuleOp mod) {
     OpBuilder builder(dotOp);
     Type AElType = dotOp.getA().getType().getElementType();
     Type promoteType;
-    if (isa<ttg::HCUMfmaEncodingAttr>(D.getType().getEncoding())) {
+    if (isa<ttg::AMDMfmaEncodingAttr>(D.getType().getEncoding())) {
       Type BElType = dotOp.getB().getType().getElementType();
 
       auto maxBitWidth = std::max(AElType.getIntOrFloatBitWidth(),
@@ -1571,7 +1571,7 @@ static void decomposeMixedModeDotOp(ModuleOp mod) {
         promoteType = builder.getF16Type();
       else if (maxBitWidth <= 32)
         promoteType = builder.getF32Type();
-    } else if (isa<ttg::HCUWmmaEncodingAttr>(D.getType().getEncoding())) {
+    } else if (isa<ttg::AMDWmmaEncodingAttr>(D.getType().getEncoding())) {
       Type BElType = dotOp.getB().getType().getElementType();
 
       if (AElType == BElType)
@@ -1696,7 +1696,7 @@ public:
     // get WMMA encoding for the given number of warps
     int numWarps = ttg::lookupNumWarps(dotOp);
 
-    ttg::HCUWmmaEncodingAttr wmmaEnc;
+    ttg::AMDWmmaEncodingAttr wmmaEnc;
 
     auto warpsPerTile =
         warpsPerTileWMMA(dotOp, retShape, numWarps, {mDim, nDim});
@@ -1705,7 +1705,7 @@ public:
 
     // TODO implement heuristic/option for this parameter
     bool isTransposed = false;
-    wmmaEnc = ttg::HCUWmmaEncodingAttr::get(ctx, wmmaVersion, isTransposed,
+    wmmaEnc = ttg::AMDWmmaEncodingAttr::get(ctx, wmmaVersion, isTransposed,
                                             warpsPerTile, CTALayout,
                                             {mDim, nDim, kDim});
 

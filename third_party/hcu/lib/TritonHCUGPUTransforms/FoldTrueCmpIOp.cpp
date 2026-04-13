@@ -7,11 +7,11 @@ using namespace mlir::triton;
 
 namespace mlir {
 
-#define GEN_PASS_DEF_TRITONAMDFOLDTRUECMPI
+#define GEN_PASS_DEF_TRITONHCUFOLDTRUECMPI
 #include "TritonHCUGPUTransforms/Passes.h.inc"
 
-struct TritonAMDFoldTrueCmpIOpPass
-    : impl::TritonAMDFoldTrueCmpIBase<TritonAMDFoldTrueCmpIOpPass> {
+struct TritonHCUFoldTrueCmpIOpPass
+    : impl::TritonHCUFoldTrueCmpIBase<TritonHCUFoldTrueCmpIOpPass> {
 
   void runOnOperation() override {
     DenseMap<Value, SetVector<Operation *>> assumptions =

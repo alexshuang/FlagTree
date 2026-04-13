@@ -201,7 +201,7 @@ public:
 
     auto dotEncoding =
         cast<DotOperandEncodingAttr>(op.getSrc().getType().getEncoding());
-    auto mfmaEncoding = dyn_cast<HCUMfmaEncodingAttr>(dotEncoding.getParent());
+    auto mfmaEncoding = dyn_cast<AMDMfmaEncodingAttr>(dotEncoding.getParent());
     if (!mfmaEncoding)
       return rewriter.notifyMatchFailure(op, "NYI: non-mfma dot operand");
     LDBG("mfma: " << mfmaEncoding);

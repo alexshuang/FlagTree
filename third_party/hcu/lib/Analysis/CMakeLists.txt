@@ -1,4 +1,4 @@
-add_triton_library(TritonAMDAnalysis
+add_triton_library(TritonHCUAnalysis
   RangeAnalysis.cpp
   AxisInfoExt.cpp
   HCUGPUAllocation.cpp

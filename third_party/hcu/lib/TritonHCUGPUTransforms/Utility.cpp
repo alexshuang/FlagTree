@@ -189,7 +189,7 @@ ttg::PaddedSharedEncodingAttr composePaddedLayoutForAsyncCopyCDNA4(
     return {};
   }
 
-  auto mfmaEnc = dyn_cast<ttg::HCUMfmaEncodingAttr>(dotOpEnc.getParent());
+  auto mfmaEnc = dyn_cast<ttg::AMDMfmaEncodingAttr>(dotOpEnc.getParent());
   if (!mfmaEnc) {
     return {};
   }

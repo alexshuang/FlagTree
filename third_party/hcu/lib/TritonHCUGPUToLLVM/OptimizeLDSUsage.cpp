@@ -37,14 +37,14 @@
 using namespace mlir;
 
 namespace mlir::triton {
-#define GEN_PASS_DEF_OPTIMIZEAMDLDSUSAGE
+#define GEN_PASS_DEF_OPTIMIZEHCULDSUSAGE
 #include "TritonHCUGPUToLLVM/Passes.h.inc"
 } // namespace mlir::triton
 
 namespace {
 
-class OptimizeAMDLDSUsage
-    : public mlir::triton::impl::OptimizeAMDLDSUsageBase<OptimizeAMDLDSUsage> {
+class OptimizeHCULDSUsage
+    : public mlir::triton::impl::OptimizeHCULDSUsageBase<OptimizeHCULDSUsage> {
 
   int LDSLimit;
 
@@ -253,8 +253,8 @@ class OptimizeAMDLDSUsage
   }
 
 public:
-  OptimizeAMDLDSUsage(StringRef targetArch, int customLDSLimit)
-      : OptimizeAMDLDSUsageBase<OptimizeAMDLDSUsage>() {
+  OptimizeHCULDSUsage(StringRef targetArch, int customLDSLimit)
+      : OptimizeHCULDSUsageBase<OptimizeHCULDSUsage>() {
     this->targetArch = targetArch.str();
     this->customLDSLimit = customLDSLimit;
   }
@@ -294,7 +294,7 @@ namespace mlir::triton::HCU {
 
 std::unique_ptr<OperationPass<ModuleOp>>
 createOptimizeLDSUsagePass(StringRef targetArch, int customLDSLimit) {
-  return std::make_unique<OptimizeAMDLDSUsage>(targetArch, customLDSLimit);
+  return std::make_unique<OptimizeHCULDSUsage>(targetArch, customLDSLimit);
 }
 
 } // namespace mlir::triton::HCU

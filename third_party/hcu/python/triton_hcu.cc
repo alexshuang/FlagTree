@@ -72,7 +72,7 @@ void init_triton_amd_passes_ttgpuir(py::module &&m) {
                      mlir::createTritonHCUGPUOptimizeEpilogue);
   ADD_PASS_OPTION_WRAPPER_1(
       "add_optimize_dot_operands",
-      mlir::triton::amdgpu::createTritonHCUGPUOptimizeDotOperands,
+      mlir::triton::hcugpu::createTritonHCUGPUOptimizeDotOperands,
       const std::string &);
   m.def("add_hoist_layout_conversions", [](mlir::PassManager &pm) {
     pm.addNestedPass<mlir::triton::FuncOp>(

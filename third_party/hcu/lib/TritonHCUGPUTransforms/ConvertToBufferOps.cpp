@@ -674,7 +674,7 @@ struct TritonHCUGPUConvertToBufferOpsPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ModuleOp mod = getOperation();
-    auto arch = getAMDArch(mod);
+    auto arch = getHCUArch(mod);
     triton::HCU::TargetInfo targetInfo(arch ? arch->str() : "");
 
     // Collect assumptions in the function

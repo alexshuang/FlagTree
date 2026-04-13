@@ -269,7 +269,7 @@ def TritonHCUGPUUpdateAsyncWaitCount: Pass<"tritonhcugpu-update-async-wait-count
   ];
 }
 
-def TritonAMDFoldTrueCmpI: Pass<"tritonhcugpu-fold-true-cmpi", "mlir::ModuleOp"> {
+def TritonHCUFoldTrueCmpI: Pass<"tritonhcugpu-fold-true-cmpi", "mlir::ModuleOp"> {
   let summary = "Fold true arith.cmpi to %true";
 
   let description = [{

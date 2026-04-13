@@ -58,7 +58,7 @@ FailureOr<MlsInsn> chooseMlsInstruction(tt::DotOp dot, int opIdx,
   auto aType = dot.getA().getType();
   auto bType = dot.getB().getType();
   auto dType = dot.getResult().getType();
-  auto mfmaEncoding = dyn_cast<ttg::HCUMfmaEncodingAttr>(dType.getEncoding());
+  auto mfmaEncoding = dyn_cast<ttg::AMDMfmaEncodingAttr>(dType.getEncoding());
 
   // get the mls shape info
   auto rank = matrixOp.getType().getRank();
@@ -145,7 +145,7 @@ public:
       auto opIdx = maybeDotOpIdxPair.value().second;
 
       // 1. choose the mls instruction for matrixOp
-      assert(isa<ttg::HCUMfmaEncodingAttr>(dotOp.getType().getEncoding()));
+      assert(isa<ttg::AMDMfmaEncodingAttr>(dotOp.getType().getEncoding()));
       auto order = getMatrixLoadTensorOrder(matrixOp, opIdx);
       bool kMajor = opIdx == 0 ? order[0] == 1 : order[0] == 0;
       auto numWarps = triton::gpu::lookupNumWarps(matrixOp);
@@ -264,7 +264,7 @@ public:
 
       SmallVector<unsigned> warpsPerCTAMfma = warpsPerCTAMatrixLoad(shape, mfmaTiles, mfmaOrder, numWarps);
       unsigned mfmaElementBitWidth = elemType.isF64() ? 64 : 32;
-      auto mfmaEnc = ttg::HCUMfmaEncodingAttr::get(
+      auto mfmaEnc = ttg::AMDMfmaEncodingAttr::get(
         matrixOp.getContext(),
         /*versionMajor*/ mfmaVersion,
         warpsPerCTAMfma,

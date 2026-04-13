@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
-#include "mlir/Dialect/HCUGPU/Utils/Chipset.h"
+#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -647,7 +647,7 @@ struct HCUGPUConvertWarpSpecializeToLLVM
         return signalPassFailure();
 
     // Convert GPU dialect to ROCDL dialect
-    FailureOr<mlir::hcugpu::Chipset> maybeChipset = mlir::hcugpu::Chipset::parse(this->arch.getValue());
+    FailureOr<mlir::amdgpu::Chipset> maybeChipset = mlir::amdgpu::Chipset::parse(this->arch.getValue());
     if (failed(maybeChipset)) {
       emitError(UnknownLoc::get(&getContext()),
                 "Invalid HCUGPU chipset name: " + this->arch.getValue());

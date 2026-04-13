@@ -663,7 +663,7 @@ struct HCUGPUConvertWarpSpecializeToLLVM
     // Create patterns for GPU to ROCDL conversion
     RewritePatternSet gpuPatterns(&getContext());
     mlir::populateGpuToROCDLConversionPatterns(
-        typeConverter, gpuPatterns, mlir::gpu::hcu::HIP, *maybeChipset);
+        typeConverter, gpuPatterns, mlir::gpu::amd::HIP, *maybeChipset);
 
     // Apply GPU to ROCDL conversion
     if (failed(applyPartialConversion(mod, gpuTarget, std::move(gpuPatterns)))) {

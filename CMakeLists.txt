@@ -386,9 +386,9 @@ if(TRITON_BUILD_PYTHON_MODULE)
       LLVMRISCVCodeGen
       LLVMRISCVAsmParser
     )
-  elseif(FLAGTREE_BACKEND STREQUAL "hcu")
-    add_subdirectory(third_party/nvidia)
-    add_subdirectory(third_party/amd)
+  # elseif(FLAGTREE_BACKEND STREQUAL "hcu")
+  #   add_subdirectory(third_party/nvidia)
+  #   add_subdirectory(third_party/amd)
   endif()
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR # Linux arm64
@@ -486,7 +486,7 @@ find_package(Threads REQUIRED)
 
 add_subdirectory(third_party/f2reduce)
 
-if(NOT FLAGTREE_BACKEND OR FLAGTREE_BACKEND MATCHES "^(aipu|tsingmicro|enflame|hcu)$")
+if(NOT FLAGTREE_BACKEND OR FLAGTREE_BACKEND MATCHES "^(aipu|tsingmicro|enflame)$")
   add_subdirectory(bin)
   add_subdirectory(test)
 endif()

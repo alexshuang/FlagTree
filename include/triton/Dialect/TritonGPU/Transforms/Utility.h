@@ -207,6 +207,9 @@ bool isPureUnaryInlineAsm(Operation *op);
 int getNVIDIAComputeCapability(Operation *module);
 
 // Read the amd target from the module attributes
+std::optional<StringRef> getHCUArch(Operation *module);
+
+// Read the amd target from the module attributes
 std::optional<StringRef> getAMDArch(Operation *module);
 
 std::optional<mlir::triton::gpu::SwizzledSharedEncodingAttr>

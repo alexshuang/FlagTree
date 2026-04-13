@@ -30,6 +30,7 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.cpp.inc"
 #include "triton/Dialect/TritonGPU/IR/OpInterfaces.cpp.inc"
 #include "triton/Dialect/TritonGPU/IR/TypeInterfaces.cpp.inc"
+#include "triton/Dialect/TritonGPU/IR/OpsEnums.cpp.inc"
 
 using namespace mlir;
 using namespace mlir::triton;
@@ -1264,6 +1265,7 @@ Attribute AMDMfmaEncodingAttr::parse(AsmParser &parser, Type type) {
   SmallVector<unsigned> tilesPerWarp = {};
   unsigned elementBitWidth = 32;
   Attribute ctaAttr = nullptr;
+  unsigned mmacLayout = static_cast<unsigned>(MmacLayout::MFMA);
 
   for (const NamedAttribute &attr : dict) {
     if (attr.getName() == "version") {
@@ -1295,6 +1297,10 @@ Attribute AMDMfmaEncodingAttr::parse(AsmParser &parser, Type type) {
       if (parseUInt(parser, attr, elementBitWidth, "elementBitWidth").failed())
         return {};
     }
+    if (attr.getName() == "mmacLayout") {
+      if (parseUInt(parser, attr, mmacLayout, "mmacLayout").failed())
+        return {};
+    }
   }
 
   std::optional<CTAEncodingAttr> CTALayout =
@@ -1307,7 +1313,8 @@ Attribute AMDMfmaEncodingAttr::parse(AsmParser &parser, Type type) {
 
   return parser.getChecked<AMDMfmaEncodingAttr>(
       parser.getContext(), version, warpsPerCTA, instrShape, isTransposed,
-      *CTALayout, tilesPerWarp, elementBitWidth);
+      *CTALayout, tilesPerWarp, elementBitWidth,
+      *symbolizeMmacLayout(mmacLayout));
 }
 
 void AMDMfmaEncodingAttr::print(AsmPrinter &printer) const {
@@ -1317,6 +1324,7 @@ void AMDMfmaEncodingAttr::print(AsmPrinter &printer) const {
           << ", instrShape = [" << getInstrShape() << "]";
 
   printer << ", isTransposed = " << getIsTransposed();
+  printer << ", mmacLayout = " << (uint32_t)getMmacLayout();
 
   maybePrintCTALayout(getContext(), printer, getCTALayout(),
                       /*rank=*/getRank());
@@ -1337,7 +1345,8 @@ LogicalResult AMDMfmaEncodingAttr::verify(
     llvm::ArrayRef<unsigned int> warpsPerCTA,
     llvm::ArrayRef<unsigned int> instrShape, bool isTransposed,
     mlir::triton::gpu::CTAEncodingAttr,
-    llvm::ArrayRef<unsigned int> tilesPerWarp, unsigned elementBitWidth) {
+    llvm::ArrayRef<unsigned int> tilesPerWarp, unsigned elementBitWidth,
+    MmacLayout mmacLayout) {
   if (!(version >= 0 && version <= 4)) {
     return emitError() << "version must be in the [0, 4] range";
   }
@@ -3693,7 +3702,6 @@ void TritonGPUDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "triton/Dialect/TritonGPU/IR/Ops.cpp.inc"
-#include "triton/Dialect/TritonGPU/IR/OpsEnums.cpp.inc"
       >();
   addInterfaces<TritonInlinerInterface>();
   addInterfaces<TritonGPUOpAsmInterface>();

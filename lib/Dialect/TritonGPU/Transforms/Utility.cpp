@@ -1080,6 +1080,23 @@ std::optional<StringRef> getAMDArch(Operation *module) {
   return ref.drop_front(4); // drop the "hip:"
 }
 
+std::optional<StringRef> getHCUArch(Operation *module) {
+  StringAttr targetAttr =
+      module->getAttrOfType<StringAttr>(triton::gpu::AttrTargetName);
+  if (!targetAttr) {
+    LDBG("Expected a target attribute on the module operation");
+    return {};
+  }
+
+  StringRef ref = targetAttr.strref();
+  if (!ref.starts_with("hip:")) {
+    LDBG("expected target attribute to be prefixed with \"hip:\"");
+    return {};
+  }
+
+  return ref.drop_front(4); // drop the "hip:"
+}
+
 inline ttg::SwizzledSharedEncodingAttr
 swizzleDotOperandLike(RankedTensorType type, ttg::CTAEncodingAttr ctaLayout) {
   // We want to see if the linear layout has the same order as an mma microtile

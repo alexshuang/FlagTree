@@ -1,6 +1,7 @@
 #ifndef TRITONGPU_ATTRDEFS
 #define TRITONGPU_ATTRDEFS
 
+include "mlir/IR/EnumAttr.td"
 include "triton/Dialect/TritonGPU/IR/TritonGPUAttrBase.td"
 
 //===----------------------------------------------------------------------===//
@@ -557,6 +558,30 @@ Swizzling examples (matrix is filled with numbers 0, 1, 2, .. columns*rows-1):
   let hasCustomAssemblyFormat = 1;
 }
 
+def HCUMlsSharedEncodingAttr :
+  TritonGPU_Attr<"HCUMlsSharedEncoding", "hcu_mls_shared_encoding",
+                [SharedEncodingTrait, LayoutEncodingTrait]> {
+  let mnemonic = "mls_shared";
+  let description = [{
+    Represent HCU mls shared memory encoding.
+  }];
+
+  let parameters = (ins "unsigned":$opIdx,  // or nonKTileIdx
+                        ArrayRefParameter<"unsigned">:$mlsTile,
+                        "unsigned":$elemBitWidth,
+                        "unsigned":$alt2Kind,
+                        "unsigned":$version,
+                        ArrayRefParameter<"unsigned">:$order,
+                        "CTAEncodingAttr":$CTALayout);
+
+  let assemblyFormat = "`<` `opIdx` `=` $opIdx `,` "
+                       "`mlsTile` `=` `[` $mlsTile `]` `,` "
+                       "`elemBitWidth` `=` $elemBitWidth `,` "
+                       "`alt2Kind` `=` $alt2Kind `,` "
+                       "`version` `=` $version `,` "
+                       "`order` `=` `[` $order `]` `,` "
+                       "`CTAEncodingAttr` `=` $CTALayout `>`";
+}
 
 //===----------------------------------------------------------------------===//
 // Distributed Layout Encoding
@@ -894,6 +919,19 @@ def MmaEncodingTrait : AttrInterface<"MmaEncodingTrait"> {
   ];
 }
 
+// Enum for HCU MMAC layout attribute
+def TTG_MmacLayoutEnum : I32EnumAttr<
+    "MmacLayout", "",
+    [
+        I32EnumAttrCase<"MFMA", 0, "mfma">,     // for compatibility with traditional AMD layout
+        I32EnumAttrCase<"LEGACY", 1, "legacy">, // no interleaving, no transpose
+        I32EnumAttrCase<"INTERLEAVE", 2, "interleave">,
+        I32EnumAttrCase<"TRANSPOSE", 3, "transpose">,
+        I32EnumAttrCase<"INTERLEAVE_TRANSPOSE", 4, "interleave_transpose">
+    ]> {
+    let cppNamespace = "::mlir::triton::gpu";
+}
+
 def AMDMfmaEncodingAttr : DistributedEncoding<"AMDMfmaEncoding", "amd_mfma_encoding", [MmaEncodingTrait]> {
   let mnemonic = "amd_mfma";
 
@@ -1026,7 +1064,8 @@ w2 w2 w3 w3
     "bool":$isTransposed,
     "CTAEncodingAttr":$CTALayout,
     ArrayRefParameter<"unsigned">:$tilesPerWarp,
-    "unsigned":$elementBitWidth
+    "unsigned":$elementBitWidth,
+    DefaultValuedParameter<"MmacLayout", "MmacLayout::LEGACY">:$mmacLayout
   );
 
   let builders = [
@@ -1036,13 +1075,15 @@ w2 w2 w3 w3
                      "bool":$isTransposed,
                      "CTAEncodingAttr":$CTALayout,
                      CArg<"ArrayRef<unsigned>", "{}">:$tpw,
-                     CArg<"unsigned", "0">:$elementBitWidth), [{
+                     CArg<"unsigned", "0">:$elementBitWidth,
+                     CArg<"MmacLayout", "MmacLayout::LEGACY">:$mmacLayout), [{
       SmallVector<unsigned> tilesPerWarp(tpw);
       if (tilesPerWarp.empty())
         tilesPerWarp = SmallVector<unsigned>(warpsPerCTA.size(), 1);
       if (elementBitWidth == 0)
         elementBitWidth = 32;
-      return $_get($_ctxt, version, warpsPerCTA, instrShape, isTransposed, CTALayout, tilesPerWarp, elementBitWidth);
+      return $_get($_ctxt, version, warpsPerCTA, instrShape, isTransposed,
+                   CTALayout, tilesPerWarp, elementBitWidth, mmacLayout);
     }]>
   ];
 
@@ -1060,6 +1101,27 @@ w2 w2 w3 w3
         CTAEncodingAttr ctaLayout, int operandIdx, ArrayRef<int64_t> operandShape,
         ArrayRef<unsigned> sharedOrder, unsigned vectorSize,
         unsigned elemBitWidth, bool needTrans) const;
+
+    bool isHCUMmac() const { return getMmacLayout() != MmacLayout::MFMA; }
+    SmallVector<unsigned> getInstrsPerWarp() const {
+      bool hasBatchDim = getTilesPerWarp().size() == 3;
+      int mIndex = 0 + hasBatchDim;
+      int nIndex = 1 + hasBatchDim;
+      return { getTilesPerWarp()[mIndex], getTilesPerWarp()[nIndex] };
+    }
+    SmallVector<unsigned> getMfmaTile() const {
+      return { getInstrShape()[0] * getInstrsPerWarp()[0], getInstrShape()[1] * getInstrsPerWarp()[1] };
+    }
+    SmallVector<unsigned> getMfmaTileRepForOperand(ArrayRef<int64_t> operandShape, int kWidth,int opIdx) const {
+      auto rep = getRepForOperand(operandShape, kWidth, opIdx);
+      SmallVector<unsigned> ret{rep.begin(), rep.end()};
+      auto rank = rep.size();
+      if (opIdx == 0)
+        ret[rank - 2] = std::max<unsigned>(1, ret[rank - 2] / getInstrsPerWarp()[0]);
+      else
+        ret[rank - 1] = std::max<unsigned>(1, ret[rank - 1] / getInstrsPerWarp()[1]);
+      return ret;
+    }
   }];
 
   let genVerifyDecl = 1;

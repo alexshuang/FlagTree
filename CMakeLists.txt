@@ -388,7 +388,7 @@ if(TRITON_BUILD_PYTHON_MODULE)
     )
   elseif(FLAGTREE_BACKEND STREQUAL "hcu")
     add_subdirectory(third_party/nvidia)
-    add_subdirectory(third_party/amd)
+    # add_subdirectory(third_party/amd)
   endif()
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR # Linux arm64

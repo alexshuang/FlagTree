@@ -9,7 +9,7 @@ target_link_libraries(triton-opt PRIVATE
   # tests
   TritonTestAnalysis
   TritonTestDialect
-  TritonAMDGPUTestAnalysis
+  TritonHCUGPUTestAnalysis
   TritonTestProton
   # MLIR core
   MLIROptLib
@@ -30,7 +30,7 @@ target_link_libraries(triton-reduce PRIVATE
   # tests
   TritonTestAnalysis
   TritonTestDialect
-  TritonAMDGPUTestAnalysis
+  TritonHCUGPUTestAnalysis
   TritonTestProton
   # MLIR core
   MLIRReduceLib
@@ -50,7 +50,7 @@ target_link_libraries(triton-lsp PRIVATE
   # tests
   TritonTestAnalysis
   TritonTestDialect
-  TritonAMDGPUTestAnalysis
+  TritonHCUGPUTestAnalysis
   TritonTestProton
   # MLIR core
   MLIRLspServerLib
@@ -89,7 +89,7 @@ target_link_libraries(triton-tensor-layout PRIVATE
   TritonTestAnalysis
   TritonTestDialect
   TritonTestProton
-  TritonAMDGPUTestAnalysis
+  TritonHCUGPUTestAnalysis
   MLIRRegisterAllDialects
   MLIRRegisterAllPasses
   MLIRTransforms

@@ -1,5 +1,4 @@
 add_triton_library(TritonHCUGPUTransforms
-  # AccelerateHCUMatmul.cpp
   BlockPingpong.cpp
   CanonicalizePointers.cpp
   CoalesceAsyncCopy.cpp

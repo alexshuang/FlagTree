@@ -13,10 +13,10 @@ add_triton_library(TritonAMDGPUToLLVM
     DotOpToLLVM.cpp
     ElementwiseOpToLLVM.cpp
     LoadStoreOpToLLVM.cpp
-    GCNAsmFormat.cpp
+    # GCNAsmFormat.cpp
     TritonGPUToLLVM.cpp
     BuiltinFuncToLLVM.cpp
-    Utility.cpp
+    # Utility.cpp
     TargetInfo.cpp
     TargetUtils.cpp
     OptimizeLDSUsage.cpp

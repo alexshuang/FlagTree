@@ -1,14 +1,14 @@
-#ifndef PROTONAMDGPU_TO_LLVM_PASSES
-#define PROTONAMDGPU_TO_LLVM_PASSES
+#ifndef PROTONHCUGPU_TO_LLVM_PASSES
+#define PROTONHCUGPU_TO_LLVM_PASSES
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertProtonAMDGPUToLLVM : Pass<"convert-proton-amd-gpu-to-llvm", "mlir::ModuleOp"> {
+def ConvertProtonHCUGPUToLLVM : Pass<"convert-proton-hcu-gpu-to-llvm", "mlir::ModuleOp"> {
     let summary = "Convert ProtonGPU to LLVM";
     let description = [{
-        Convert ProtonGPU to LLVM using AMD-specific lowering patterns.
+        Convert ProtonGPU to LLVM using HCU-specific lowering patterns.
     }];
-    let constructor = "mlir::triton::proton::gpu::createConvertProtonAMDGPUToLLVMPass(\"\")";
+    let constructor = "mlir::triton::proton::gpu::createConvertProtonHCUGPUToLLVMPass(\"\")";
 
     let dependentDialects = ["mlir::arith::ArithDialect",
                              "mlir::math::MathDialect",
@@ -18,7 +18,7 @@ def ConvertProtonAMDGPUToLLVM : Pass<"convert-proton-amd-gpu-to-llvm", "mlir::Mo
                              "mlir::ROCDL::ROCDLDialect",
                              "mlir::triton::TritonDialect",
                              "mlir::triton::gpu::TritonGPUDialect",
-                             "mlir::triton::amdgpu::TritonAMDGPUDialect",
+                             "mlir::triton::hcugpu::TritonHCUGPUDialect",
                              "mlir::triton::proton::ProtonDialect",
                              "mlir::triton::proton::gpu::ProtonGPUDialect"];
 
@@ -28,4 +28,4 @@ def ConvertProtonAMDGPUToLLVM : Pass<"convert-proton-amd-gpu-to-llvm", "mlir::Mo
     ];
 }
 
-#endif // PROTONAMDGPU_TO_LLVM_PASSES
+#endif // PROTONHCUGPU_TO_LLVM_PASSES

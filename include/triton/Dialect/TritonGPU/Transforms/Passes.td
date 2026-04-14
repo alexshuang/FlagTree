@@ -112,7 +112,7 @@ def TritonGPUAutomaticWarpSpecialization : Pass<"tritongpu-automatic-warp-specia
     "mlir::scf::SCFDialect",
     "mlir::arith::ArithDialect",
     "mlir::triton::nvidia_gpu::TritonNvidiaGPUDialect",
-//    "triton::nvws::NVWSDialect"
+    "triton::nvws::NVWSDialect"
   ];
 
   let options = [
@@ -133,7 +133,7 @@ def TritonGPUPartitionLoops : Pass<"tritongpu-partition-loops", "mlir::ModuleOp"
 
   let dependentDialects = [
     "mlir::triton::gpu::TritonGPUDialect",
-//    "triton::nvws::NVWSDialect"
+    "triton::nvws::NVWSDialect"
   ];
 }
 

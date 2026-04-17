@@ -193,7 +193,7 @@ def TritonHCUGPUInThreadTranspose: Pass<"tritonhcugpu-in-thread-transpose", "mli
     ```
       #blocked = #ttg.blocked<{sizePerThread = [1, 8], ..., order = [1, 0]}>
       #shared = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0]}>
-      #mma = #ttg.amd_mfma<{...}>
+      #mma = #ttg.hcu_mfma<{...}>
 
       // pass consider global loads are coalesced at this point
       %loaded_data = tt.load ... : tensor<#blocked>
@@ -211,7 +211,7 @@ def TritonHCUGPUInThreadTranspose: Pass<"tritonhcugpu-in-thread-transpose", "mli
       // transposition makes it possible to do vectorized shared memory stores
       #linear = #ttg.linear<{register = [[1, 0], [2, 0], [0, 1], [0, 2], [0, 4] ... }>
       // shared layout with order compatible with mma layout, so shared loads are vectorized
-      #shared = #ttg.amd_rotating_shared<{vec = 4, perPhase = 1, maxPhase = 16, order = [0, 1]}>
+      #shared = #ttg.hcu_rotating_shared<{vec = 4, perPhase = 1, maxPhase = 16, order = [0, 1]}>
 
       %loaded_data = tt.load ... : tensor<#transposable_layout>
       %tmp1 = ttg.convert_layout %loaded_data : tensor<#transposable_layout> -> tensor<#blocked>

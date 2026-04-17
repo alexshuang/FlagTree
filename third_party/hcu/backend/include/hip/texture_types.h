@@ -34,9 +34,9 @@ THE SOFTWARE.
 #include <hip/hip_common.h>
 #endif
 
-#if !defined(__HIP_PLATFORM_AMD__) && defined(__HIP_PLATFORM_NVIDIA__)
+#if !defined(__HIP_PLATFORM_HCU__) && defined(__HIP_PLATFORM_NVIDIA__)
 #include "texture_types.h"
-#elif defined(__HIP_PLATFORM_AMD__) && !defined(__HIP_PLATFORM_NVIDIA__)
+#elif defined(__HIP_PLATFORM_HCU__) && !defined(__HIP_PLATFORM_NVIDIA__)
 /*******************************************************************************
  *                                                                              *
  *                                                                              *
@@ -183,7 +183,7 @@ struct __HIP_TEXTURE_ATTRIB texture : public textureReference {
 #endif /* __cplusplus */
 
 #else
-#error ("Must define exactly one of __HIP_PLATFORM_AMD__ or __HIP_PLATFORM_NVIDIA__");
+#error ("Must define exactly one of __HIP_PLATFORM_HCU__ or __HIP_PLATFORM_NVIDIA__");
 #endif
 
 #if defined(__clang__)

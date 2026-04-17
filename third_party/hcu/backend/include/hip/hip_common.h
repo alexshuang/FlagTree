@@ -28,11 +28,11 @@ THE SOFTWARE.
 #pragma clang diagnostic ignored "-Wreserved-macro-identifier"
 #endif
 // Common code included at start of every hip file.
-// Auto enable __HIP_PLATFORM_AMD__ if compiling on AMD platform
+// Auto enable __HIP_PLATFORM_HCU__ if compiling on HCU platform
 // Other compiler (GCC,ICC,etc) need to set one of these macros explicitly
 #if defined(__clang__) && defined(__HIP__)
-#ifndef __HIP_PLATFORM_AMD__
-#define __HIP_PLATFORM_AMD__
+#ifndef __HIP_PLATFORM_HCU__
+#define __HIP_PLATFORM_HCU__
 #endif
 #endif  // defined(__clang__) && defined(__HIP__)
 

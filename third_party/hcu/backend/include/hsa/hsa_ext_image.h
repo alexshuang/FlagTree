@@ -7,11 +7,11 @@
 // 
 // Developed by:
 // 
-//                 AMD Research and AMD HSA Software Development
+//                 HCU Research and HCU HSA Software Development
 // 
 //                 Advanced Micro Devices, Inc.
 // 
-//                 www.amd.com
+//                 www.hcu.com
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to

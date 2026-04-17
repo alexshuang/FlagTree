@@ -31,8 +31,8 @@ THE SOFTWARE.
 #endif
 
 
-#if !defined(__HIP_PLATFORM_AMD__) && defined(__HIP_PLATFORM_NVIDIA__)
-#elif defined(__HIP_PLATFORM_AMD__) && !defined(__HIP_PLATFORM_NVIDIA__)
+#if !defined(__HIP_PLATFORM_HCU__) && defined(__HIP_PLATFORM_NVIDIA__)
+#elif defined(__HIP_PLATFORM_HCU__) && !defined(__HIP_PLATFORM_NVIDIA__)
 
 /**
  *  @defgroup LinkerTypes Jit Linker Data Types
@@ -132,7 +132,7 @@ typedef enum hipLibraryOption_e {
  */
 
 #else
-#error ("Must define exactly one of __HIP_PLATFORM_AMD__ or __HIP_PLATFORM_NVIDIA__");
+#error ("Must define exactly one of __HIP_PLATFORM_HCU__ or __HIP_PLATFORM_NVIDIA__");
 #endif
 
 #endif  // HIP_INCLUDE_HIP_LINKER_TYPES_H

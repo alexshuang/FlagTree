@@ -28,12 +28,12 @@ THE SOFTWARE.
 // on NVCC path:
 
 
-#if defined(__HIP_PLATFORM_AMD__) && !defined(__HIP_PLATFORM_NVIDIA__)
-#include <hip/amd_detail/amd_channel_descriptor.h>
-#elif !defined(__HIP_PLATFORM_AMD__) && defined(__HIP_PLATFORM_NVIDIA__)
+#if defined(__HIP_PLATFORM_HCU__) && !defined(__HIP_PLATFORM_NVIDIA__)
+#include <hip/hcu_detail/hcu_channel_descriptor.h>
+#elif !defined(__HIP_PLATFORM_HCU__) && defined(__HIP_PLATFORM_NVIDIA__)
 #include <hip/nvidia_detail/nvidia_channel_descriptor.h>
 #else
-#error ("Must define exactly one of __HIP_PLATFORM_AMD__ or __HIP_PLATFORM_NVIDIA__");
+#error ("Must define exactly one of __HIP_PLATFORM_HCU__ or __HIP_PLATFORM_NVIDIA__");
 #endif
 
 #endif

@@ -23,7 +23,7 @@ THE SOFTWARE.
 //! HIP = Heterogeneous-compute Interface for Portability
 //!
 //! Define a extremely thin runtime layer that allows source code to be compiled unmodified
-//! through either AMD CLANG or NVCC.   Key features tend to be in the spirit
+//! through either HCU CLANG or NVCC.   Key features tend to be in the spirit
 //! and terminology of CUDA, but with a portable path to other accelerators as well:
 //
 //! Both paths support rich C++ features including classes, templates, lambdas, etc.
@@ -53,12 +53,12 @@ THE SOFTWARE.
 #include <hip/hip_version.h>
 #include <hip/hip_common.h>
 
-#if defined(__HIP_PLATFORM_AMD__) && !defined(__HIP_PLATFORM_NVIDIA__)
-#include <hip/amd_detail/amd_hip_runtime.h>
-#elif !defined(__HIP_PLATFORM_AMD__) && defined(__HIP_PLATFORM_NVIDIA__)
+#if defined(__HIP_PLATFORM_HCU__) && !defined(__HIP_PLATFORM_NVIDIA__)
+#include <hip/hcu_detail/hcu_hip_runtime.h>
+#elif !defined(__HIP_PLATFORM_HCU__) && defined(__HIP_PLATFORM_NVIDIA__)
 #include <hip/nvidia_detail/nvidia_hip_runtime.h>
 #else
-#error ("Must define exactly one of __HIP_PLATFORM_AMD__ or __HIP_PLATFORM_NVIDIA__");
+#error ("Must define exactly one of __HIP_PLATFORM_HCU__ or __HIP_PLATFORM_NVIDIA__");
 #endif
 
 #if !defined(__HIPCC_RTC__)

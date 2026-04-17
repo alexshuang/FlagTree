@@ -68,7 +68,7 @@ def _get_path_to_hip_runtime_dylib():
     lib_name = "libamdhip64.so"
 
     # If we are told explicitly what HIP runtime dynamic library to use, obey that.
-    if env_libhip_path := knobs.amd.libhip_path:
+    if env_libhip_path := knobs.hcu.libhip_path:
         if env_libhip_path.endswith(lib_name) and os.path.exists(env_libhip_path):
             return env_libhip_path
         raise RuntimeError(f"TRITON_LIBHIP_PATH '{env_libhip_path}' does not point to a valid {lib_name}")
@@ -347,7 +347,7 @@ def make_launcher(constants, signature, warp_size, tensordesc_meta):
     params.append("&global_scratch")
     params.append("&profile_scratch")
     src = f"""
-#define __HIP_PLATFORM_AMD__
+#define __HIP_PLATFORM_HCU__
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <Python.h>
@@ -697,7 +697,7 @@ PyMODINIT_FUNC PyInit___triton_launcher(void) {{
   if(data_ptr_str == NULL) {{
     return NULL;
   }}
-  PyObject* driver_mod = PyImport_ImportModule("triton.backends.amd.driver");
+  PyObject* driver_mod = PyImport_ImportModule("triton.backends.hcu.driver");
   if (driver_mod == NULL) {{
     return NULL;
   }}

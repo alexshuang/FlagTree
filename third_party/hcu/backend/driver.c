@@ -1,4 +1,4 @@
-#define __HIP_PLATFORM_AMD__
+#define __HIP_PLATFORM_HCU__
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #define PY_SSIZE_T_CLEAN
@@ -45,7 +45,7 @@ static void PyTDMDescriptor_dealloc(PyTDMDescriptorObject *self) {
 
 static PyTypeObject PyTDMDescriptorType = {
     PyVarObject_HEAD_INIT(NULL, 0).tp_name =
-        "triton.backends.amd.PyTDMDescriptor",
+        "triton.backends.hcu.PyTDMDescriptor",
     .tp_basicsize = sizeof(PyTDMDescriptorObject),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT,
@@ -146,7 +146,7 @@ static const char *hipLibSearchPaths[] = {"/*py_libhip_search_path*/"};
 #ifdef TRITON_HIP_DRIVER_DBG_VERSION
 #define TRITON_HIP_DRIVER_LOG_VERSION(version, msgBuff)                        \
   do {                                                                         \
-    snprintf(msgBuff, sizeof(msgBuff), "libamdhip64 version is: %d.%d.%d",     \
+    snprintf(msgBuff, sizeof(msgBuff), "libhcuhip64 version is: %d.%d.%d",     \
              TRITON_HIP_DRIVER_EXTRACT_MAJOR_VERSION(version),                 \
              TRITON_HIP_DRIVER_EXTRACT_MINOR_VERSION(version),                 \
              TRITON_HIP_DRIVER_EXTRACT_PATCH_VERSION(version));                \
@@ -189,7 +189,7 @@ static int checkDriverVersion(void *lib) {
   error = dlerror();
   if (error) {
     PyErr_SetString(PyExc_RuntimeError,
-                    "cannot query 'hipDriverGetVersion' from libamdhip64.so");
+                    "cannot query 'hipDriverGetVersion' from libhcuhip64.so");
     dlclose(lib);
     return -1;
   }
@@ -204,7 +204,7 @@ static int checkDriverVersion(void *lib) {
     const int hipPatchVersion =
         TRITON_HIP_DRIVER_EXTRACT_PATCH_VERSION(hipVersion);
     snprintf(msgBuff, sizeof(msgBuff),
-             "libamdhip64 version %d.%d.%d is not supported! Required major "
+             "libhcuhip64 version %d.%d.%d is not supported! Required major "
              "version is >=%d.",
              hipMajVersion, hipMinVersion, hipPatchVersion,
              TRITON_HIP_DRIVER_REQ_MAJOR_VERSION);
@@ -232,7 +232,7 @@ bool initSymbolTable() {
   }
 
   if (!lib) {
-    PyErr_SetString(PyExc_RuntimeError, "cannot open libamdhip64.so");
+    PyErr_SetString(PyExc_RuntimeError, "cannot open libhcuhip64.so");
     return false;
   }
 
@@ -251,7 +251,7 @@ bool initSymbolTable() {
   error = dlerror();
   if (error) {
     PyErr_SetString(PyExc_RuntimeError,
-                    "cannot query 'hipGetProcAddress' from libamdhip64.so");
+                    "cannot query 'hipGetProcAddress' from libhcuhip64.so");
     dlclose(lib);
     return false;
   }
@@ -267,7 +267,7 @@ bool initSymbolTable() {
   if (status != hipSuccess) {                                                  \
     PyErr_SetString(PyExc_RuntimeError,                                        \
                     "cannot get address for '" #hipSymbolName                  \
-                    "' from libamdhip64.so");                                  \
+                    "' from libhcuhip64.so");                                  \
     dlclose(lib);                                                              \
     return false;                                                              \
   }
@@ -286,7 +286,7 @@ bool initSymbolTable() {
     PyErr_SetString(PyExc_RuntimeError,
                     "cannot get address for any supported HIP 6.x device "
                     "properties symbol from "
-                    "libamdhip64.so");
+                    "libhcuhip64.so");
     dlclose(lib);
     return false;
   }

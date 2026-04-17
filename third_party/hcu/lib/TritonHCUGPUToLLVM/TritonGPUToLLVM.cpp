@@ -221,6 +221,7 @@ struct ConvertTritonHCUGPUToLLVM
     HCU::populateBarrierOpToLLVMPatterns(typeConverter, patterns, HCUBenefit);
     HCU::populateTensorPtrOpsToLLVMPatterns(typeConverter, patterns,
                                             HCUBenefit);
+    // int HCUBenefit = HCUBenefit + 1;
     HCUBenefit += 1;
     HCU::populateMLSOpToLLVMPatterns(typeConverter, targetInfo, patterns,
                                      axisInfoAnalysis, HCUBenefit);

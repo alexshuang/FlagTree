@@ -234,7 +234,7 @@ typedef struct hipDeviceProp_t {
   int hipReserved[31];  ///< Reserved for adding new entries for HIP/CUDA.
 
   /* HIP Only struct members */
-  char gcnArchName[256];                    ///< AMD GCN Arch Name. HIP Only.
+  char gcnArchName[256];                    ///< HCU GCN Arch Name. HIP Only.
   size_t maxSharedMemoryPerMultiProcessor;  ///< Maximum Shared Memory Per CU. HIP Only.
   int clockInstructionRate;  ///< Frequency in khz of the timer used by the device-side "clock*"
                              ///< instructions.  New for HIP.
@@ -260,7 +260,7 @@ typedef struct hipDeviceProp_t {
 /**
  * hipMemoryType (for pointer attributes)
  *
- * @note hipMemoryType enum values are combination of cudaMemoryType and cuMemoryType and AMD
+ * @note hipMemoryType enum values are combination of cudaMemoryType and cuMemoryType and HCU
  * specific enum values.
  *
  */
@@ -630,12 +630,12 @@ enum hipGPUDirectRDMAWritesOrdering {
   hipGPUDirectRDMAWritesOrderingAllDevices = 200
 };
 
-#if defined(__HIP_PLATFORM_AMD__) && !defined(__HIP_PLATFORM_NVIDIA__)
+#if defined(__HIP_PLATFORM_HCU__) && !defined(__HIP_PLATFORM_NVIDIA__)
 
 #ifndef GENERIC_GRID_LAUNCH
 #define GENERIC_GRID_LAUNCH 1
 #endif
-#include <hip/amd_detail/host_defines.h>
+#include <hip/hcu_detail/host_defines.h>
 #include <hip/driver_types.h>
 #include <hip/texture_types.h>
 #include <hip/surface_types.h>
@@ -784,7 +784,7 @@ enum hipLimit_t {
  * used to measure timing, and do not require the event inspection operations
  * (see ::hipEventSynchronize, ::hipEventQuery, and ::hipEventElapsedTime) to synchronize-with
  * the work on which the recorded event (see ::hipEventRecord) is waiting.
- * On some AMD GPU devices this can improve the accuracy of timing measurements by avoiding the
+ * On some HCU GPU devices this can improve the accuracy of timing measurements by avoiding the
  * cost of cache writeback and invalidation, and the performance impact of those actions on the
  * execution of following work. */
 #define hipEventDisableSystemFence 0x20000000
@@ -838,7 +838,7 @@ enum hipLimit_t {
  * may be transferred faster across the PCI Express bus, however, could have low read efficiency by
  * most CPUs. It's a good option for data transfer from host to device via mapped pinned memory.
  * @note  This flag is only for CUDA source compatibility but not functional within HIP runtime,
- * because the allocation path is currently not supported on the AMD platform.*/
+ * because the allocation path is currently not supported on the HCU platform.*/
 #define hipHostAllocWriteCombined 0x4
 
 /** Allocates the memory as write-combined. On some system configurations, write-combined allocation
@@ -846,13 +846,13 @@ enum hipLimit_t {
  * most CPUs. It's a good option for data transfer from host to device via mapped pinned memory.
  * @note  This flag is the same definition as #hipHostAllocWriteCombined which is equivalent to
  * cudaHostAllocWriteCombined. It is only for CUDA source compatibility but not functional within
- * HIP runtime, because the allocation path is currently not supported on the AMD platform.*/
+ * HIP runtime, because the allocation path is currently not supported on the HCU platform.*/
 #define hipHostMallocWriteCombined 0x4
 
 /**
  * Host memory will be forcedly allocated on extended fine grained system memory
  * pool which is with MTYPE_UC.
- * @note  This allocation flag is applicable on AMD devices, except for Navi4X, in Linux only.
+ * @note  This allocation flag is applicable on HCU devices, except for Navi4X, in Linux only.
  */
 #define hipHostMallocUncached 0x10000000
 #define hipHostAllocUncached hipHostMallocUncached
@@ -906,14 +906,14 @@ enum hipLimit_t {
 /** Not supported.*/
 #define hipHostRegisterIoMemory 0x4
 
-/** This flag is ignored On AMD devices.*/
+/** This flag is ignored On HCU devices.*/
 #define hipHostRegisterReadOnly 0x08
 
 /** Coarse Grained host memory lock.*/
 #define hipExtHostRegisterCoarseGrained 0x8
 
 /** Map host memory onto extended fine grained access host memory pool when enabled.
- * It is applicable on AMD devices, except for Navi4X, in Linux only.
+ * It is applicable on HCU devices, except for Navi4X, in Linux only.
  */
 #define hipExtHostRegisterUncached 0x80000000
 
@@ -978,7 +978,7 @@ typedef enum hipStreamBatchMemOpType {
  * - hipStreamMemOpWriteValue64: Write a 64-bit value.
  *
  * Each operation type includes an address, the value to wait for or write, flags, and an
- * optional alias that is not relevant on AMD GPUs. Flags can be used to specify different
+ * optional alias that is not relevant on HCU GPUs. Flags can be used to specify different
  * wait conditions such as equality, bitwise AND, greater than or equal, and bitwise NOR.
  *
  * Example usage:
@@ -1008,7 +1008,7 @@ typedef union hipStreamBatchMemOpParams_union {
       uint64_t value64;
     };
     unsigned int flags;
-    hipDeviceptr_t alias;  ///< Not valid for AMD backend. Initial value is unimportant
+    hipDeviceptr_t alias;  ///< Not valid for HCU backend. Initial value is unimportant
   } waitValue;
   struct hipStreamMemOpWriteValueParams_t {
     hipStreamBatchMemOpType operation;
@@ -1018,16 +1018,16 @@ typedef union hipStreamBatchMemOpParams_union {
       uint64_t value64;
     };
     unsigned int flags;
-    hipDeviceptr_t alias;  ///< Not valid for AMD backend. Initial value is unimportant
+    hipDeviceptr_t alias;  ///< Not valid for HCU backend. Initial value is unimportant
   } writeValue;
   struct hipStreamMemOpFlushRemoteWritesParams_t {
     hipStreamBatchMemOpType operation;
     unsigned int flags;
-  } flushRemoteWrites;  ///< Currently not supported on AMD
+  } flushRemoteWrites;  ///< Currently not supported on HCU
   struct hipStreamMemOpMemoryBarrierParams_t {
     hipStreamBatchMemOpType operation;
     unsigned int flags;
-  } memoryBarrier;  ///< Currently not supported on AMD
+  } memoryBarrier;  ///< Currently not supported on HCU
   uint64_t pad[6];
 } hipStreamBatchMemOpParams;
 
@@ -1248,7 +1248,7 @@ typedef struct hipMemPoolPtrExportData {
 } hipMemPoolPtrExportData;
 
 /**
- * @warning On AMD devices and some Nvidia devices, these hints and controls are ignored.
+ * @warning On HCU devices and some Nvidia devices, these hints and controls are ignored.
  */
 typedef enum hipFuncAttribute {
   hipFuncAttributeMaxDynamicSharedMemorySize =
@@ -1258,7 +1258,7 @@ typedef enum hipFuncAttribute {
   hipFuncAttributeMax
 } hipFuncAttribute;
 /**
- * @warning On AMD devices and some Nvidia devices, these hints and controls are ignored.
+ * @warning On HCU devices and some Nvidia devices, these hints and controls are ignored.
  */
 typedef enum hipFuncCache_t {
   hipFuncCachePreferNone,    ///< no preference for shared memory or L1 (default)
@@ -1267,7 +1267,7 @@ typedef enum hipFuncCache_t {
   hipFuncCachePreferEqual,   ///< prefer equal size L1 cache and shared memory
 } hipFuncCache_t;
 /**
- * @warning On AMD devices and some Nvidia devices, these hints and controls are ignored.
+ * @warning On HCU devices and some Nvidia devices, these hints and controls are ignored.
  */
 typedef enum hipSharedMemConfig {
   hipSharedMemBankSizeDefault,   ///< The compiler selects a device-specific value for the banking.
@@ -2056,7 +2056,7 @@ hipError_t hipInit(unsigned int flags);
  * @returns #hipSuccess, #hipErrorInvalidValue
  *
  * @warning The HIP driver version does not correspond to an exact CUDA driver revision.
- * On AMD platform, the API returns the HIP driver version, while on NVIDIA platform, it calls
+ * On HCU platform, the API returns the HIP driver version, while on NVIDIA platform, it calls
  * the corresponding CUDA runtime API and returns the CUDA driver version.
  * There is no mapping/correlation between HIP driver version and CUDA driver version.
  *
@@ -2071,7 +2071,7 @@ hipError_t hipDriverGetVersion(int* driverVersion);
  * @returns #hipSuccess, #hipErrorInvalidValue
  *
  * @warning The version definition of HIP runtime is different from CUDA.
- * On AMD platform, the function returns HIP runtime version,
+ * On HCU platform, the function returns HIP runtime version,
  * while on NVIDIA platform, it returns CUDA runtime version.
  * And there is no mapping/correlation between HIP version and CUDA version.
  *
@@ -2363,8 +2363,8 @@ hipError_t hipDeviceGetTexture1DLinearMaxWidth(size_t* max_width, const hipChann
  *
  * @returns #hipSuccess, #hipErrorNotInitialized, #hipErrorNotSupported
  *
- * Note: AMD devices do not support reconfigurable cache. This API is not implemented
- * on AMD platform. If the function is called, it will return hipErrorNotSupported.
+ * Note: HCU devices do not support reconfigurable cache. This API is not implemented
+ * on HCU platform. If the function is called, it will return hipErrorNotSupported.
  *
  */
 hipError_t hipDeviceSetCacheConfig(hipFuncCache_t cacheConfig);
@@ -2374,7 +2374,7 @@ hipError_t hipDeviceSetCacheConfig(hipFuncCache_t cacheConfig);
  * @param [out] cacheConfig Pointer of cache configuration
  *
  * @returns #hipSuccess, #hipErrorNotInitialized
- * Note: AMD devices do not support reconfigurable cache. This hint is ignored
+ * Note: HCU devices do not support reconfigurable cache. This hint is ignored
  * on these architectures.
  *
  */
@@ -2420,7 +2420,7 @@ hipError_t hipDeviceSetLimit(enum hipLimit_t limit, size_t value);
  *
  * @returns #hipSuccess, #hipErrorInvalidValue, #hipErrorNotInitialized
  *
- * Note: AMD devices and some Nvidia GPUS do not support shared cache banking, and the hint is
+ * Note: HCU devices and some Nvidia GPUS do not support shared cache banking, and the hint is
  * ignored on those architectures.
  *
  */
@@ -2440,7 +2440,7 @@ hipError_t hipGetDeviceFlags(unsigned int* flags);
  *
  * @returns #hipSuccess, #hipErrorInvalidValue, #hipErrorNotInitialized
  *
- * Note: AMD devices and some Nvidia GPUS do not support shared cache banking, and the hint is
+ * Note: HCU devices and some Nvidia GPUS do not support shared cache banking, and the hint is
  * ignored on those architectures.
  *
  */
@@ -2491,7 +2491,7 @@ hipError_t hipChooseDevice(int* device, const hipDeviceProp_t* prop);
  *
  * @param [in] device1 Ordinal for device1
  * @param [in] device2 Ordinal for device2
- * @param [out] linktype Returns the link type (See hsa_amd_link_info_type_t) between the two
+ * @param [out] linktype Returns the link type (See hsa_hcu_link_info_type_t) between the two
  * devices
  * @param [out] hopcount Returns the hop count between the two devices
  *
@@ -2639,7 +2639,7 @@ hipError_t hipIpcOpenEventHandle(hipEvent_t* event, hipIpcEventHandle_t handle);
  *
  * @returns #hipSuccess, #hipErrorInvalidDeviceFunction, #hipErrorInvalidValue
  *
- * Note: AMD devices and some Nvidia GPUS do not support shared cache banking, and the hint is
+ * Note: HCU devices and some Nvidia GPUS do not support shared cache banking, and the hint is
  * ignored on those architectures.
  *
  */
@@ -2651,7 +2651,7 @@ hipError_t hipFuncSetAttribute(const void* func, hipFuncAttribute attr, int valu
  * @param [in] config Configuration to set.
  *
  * @returns #hipSuccess, #hipErrorNotInitialized
- * Note: AMD devices and some Nvidia GPUS do not support reconfigurable cache.  This hint is ignored
+ * Note: HCU devices and some Nvidia GPUS do not support reconfigurable cache.  This hint is ignored
  * on those architectures.
  *
  */
@@ -2664,7 +2664,7 @@ hipError_t hipFuncSetCacheConfig(const void* func, hipFuncCache_t config);
  *
  * @returns #hipSuccess, #hipErrorInvalidDeviceFunction, #hipErrorInvalidValue
  *
- * Note: AMD devices and some Nvidia GPUS do not support shared cache banking, and the hint is
+ * Note: HCU devices and some Nvidia GPUS do not support shared cache banking, and the hint is
  * ignored on those architectures.
  *
  */
@@ -2848,7 +2848,7 @@ hipError_t hipStreamCreateWithPriority(hipStream_t* stream, unsigned int flags, 
  * value that is outside the meaningful range as specified by this API, the priority is
  * automatically clamped to within the valid range.
  *
- * @warning This API is under development on AMD GPUs and simply returns #hipSuccess.
+ * @warning This API is under development on HCU GPUs and simply returns #hipSuccess.
  */
 hipError_t hipDeviceGetStreamPriorityRange(int* leastPriority, int* greatestPriority);
 /**
@@ -3984,7 +3984,7 @@ hipError_t hipMemRangeGetAttributes(void** data, size_t* data_sizes,
  * @returns #hipSuccess, #hipErrorInvalidValue
  *
  * @warning This API is under development. Currently it is a no-operation (NOP)
- *          function on AMD GPUs and returns #hipSuccess.
+ *          function on HCU GPUs and returns #hipSuccess.
  */
 hipError_t hipStreamAttachMemAsync(hipStream_t stream, void* dev_ptr, size_t length __dparm(0),
                                    unsigned int flags __dparm(hipMemAttachSingle));
@@ -4933,7 +4933,7 @@ hipError_t hipGetProcAddress(const char* symbol, void** pfn, int hipVersion, uin
  * This also applies to hipMemcpyFromSymbol, hipGetSymbolAddress, and hipGetSymbolSize.
  * For detailed usage, see the
  * <a
- * href="https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_porting_guide.html#memcpytosymbol">memcpyToSymbol
+ * href="https://rocm.docs.hcu.com/projects/HIP/en/latest/how-to/hip_porting_guide.html#memcpytosymbol">memcpyToSymbol
  * example</a> in the HIP Porting Guide.
  *
  *
@@ -5908,7 +5908,7 @@ hipError_t hipMemcpyPeerAsync(void* dst, int dstDeviceId, const void* src, int s
  *
  *  @warning
  *
- *  On the AMD platform, context management APIs are deprecated as there are better alternate
+ *  On the HCU platform, context management APIs are deprecated as there are better alternate
  *  interfaces, such as using hipSetDevice and stream APIs to achieve the required functionality.
  *
  *  On the NVIDIA platform, CUDA supports the driver API that defines "Context" and "Devices" as
@@ -5932,7 +5932,7 @@ hipError_t hipMemcpyPeerAsync(void* dst, int dstDeviceId, const void* src, int s
  * @see hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent, hipCtxPushCurrent,
  * hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  *
  */
@@ -5948,7 +5948,7 @@ hipError_t hipCtxCreate(hipCtx_t* ctx, unsigned int flags, hipDevice_t device);
  * @see hipCtxCreate, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,hipCtxSetCurrent,
  * hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize , hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -5963,7 +5963,7 @@ hipError_t hipCtxDestroy(hipCtx_t ctx);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxSetCurrent, hipCtxGetCurrent,
  * hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -5978,7 +5978,7 @@ hipError_t hipCtxPopCurrent(hipCtx_t* ctx);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize , hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -5993,7 +5993,7 @@ hipError_t hipCtxPushCurrent(hipCtx_t ctx);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize , hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6008,7 +6008,7 @@ hipError_t hipCtxSetCurrent(hipCtx_t ctx);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetDevice, hipCtxGetFlags, hipCtxPopCurrent,
  * hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6023,7 +6023,7 @@ hipError_t hipCtxGetCurrent(hipCtx_t* ctx);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6045,7 +6045,7 @@ hipError_t hipCtxGetDevice(hipDevice_t* device);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetDevice, hipCtxGetFlags, hipCtxPopCurrent,
  * hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6057,13 +6057,13 @@ hipError_t hipCtxGetApiVersion(hipCtx_t ctx, unsigned int* apiVersion);
  *
  * @returns #hipSuccess
  *
- * @warning AMD devices and some Nvidia GPUS do not support reconfigurable cache.  This hint is
+ * @warning HCU devices and some Nvidia GPUS do not support reconfigurable cache.  This hint is
  * ignored on those architectures.
  *
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6075,13 +6075,13 @@ hipError_t hipCtxGetCacheConfig(hipFuncCache_t* cacheConfig);
  *
  * @return #hipSuccess
  *
- * @warning AMD devices and some Nvidia GPUS do not support reconfigurable cache.  This hint is
+ * @warning HCU devices and some Nvidia GPUS do not support reconfigurable cache.  This hint is
  * ignored on those architectures.
  *
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6093,13 +6093,13 @@ hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig);
  *
  * @return #hipSuccess
  *
- * @warning AMD devices and some Nvidia GPUS do not support shared cache banking, and the hint is
+ * @warning HCU devices and some Nvidia GPUS do not support shared cache banking, and the hint is
  * ignored on those architectures.
  *
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6111,13 +6111,13 @@ hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config);
  *
  * @return #hipSuccess
  *
- * @warning AMD devices and some Nvidia GPUS do not support shared cache banking, and the hint is
+ * @warning HCU devices and some Nvidia GPUS do not support shared cache banking, and the hint is
  * ignored on those architectures.
  *
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6133,7 +6133,7 @@ hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig* pConfig);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6148,7 +6148,7 @@ hipError_t hipCtxSynchronize(void);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxPopCurrent, hipCtxGetCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6172,7 +6172,7 @@ hipError_t hipCtxGetFlags(unsigned int* flags);
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  * @warning PeerToPeer support is experimental.
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6193,7 +6193,7 @@ hipError_t hipCtxEnablePeerAccess(hipCtx_t peerCtx, unsigned int flags);
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  * @warning PeerToPeer support is experimental.
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent cuCtx driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent cuCtx driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6211,7 +6211,7 @@ hipError_t hipCtxDisablePeerAccess(hipCtx_t peerCtx);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6228,7 +6228,7 @@ hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev, unsigned int* flags, int
  * @warning This function return #hipSuccess though doesn't release the primaryCtx by design on
  * HIP/HIP-CLANG path.
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6244,7 +6244,7 @@ hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6259,7 +6259,7 @@ hipError_t hipDevicePrimaryCtxRetain(hipCtx_t* pctx, hipDevice_t dev);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6275,7 +6275,7 @@ hipError_t hipDevicePrimaryCtxReset(hipDevice_t dev);
  * @see hipCtxCreate, hipCtxDestroy, hipCtxGetFlags, hipCtxPopCurrent, hipCtxGetCurrent,
  * hipCtxSetCurrent, hipCtxPushCurrent, hipCtxSetCacheConfig, hipCtxSynchronize, hipCtxGetDevice
  *
- * @warning  This API is deprecated on the AMD platform, only for equivalent driver API on the
+ * @warning  This API is deprecated on the HCU platform, only for equivalent driver API on the
  * NVIDIA platform.
  */
 HIP_DEPRECATED(HIP_DEPRECATED_MSG)
@@ -6476,14 +6476,14 @@ hipError_t hipModuleGetTexRef(textureReference** texRef, hipModule_t hmod, const
  *
  * By default, the following command generates a fatbin:
  *
- * "amdclang++ -O3 -c --offload-device-only --offload-arch=<GPU_ARCH> <input_file> -o <output_file>"
+ * "hcuclang++ -O3 -c --offload-device-only --offload-arch=<GPU_ARCH> <input_file> -o <output_file>"
  *
  * For more details, refer to:
  * <a
- * href= "https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/kernel_language_cpp_support.html#kernel-compilation">
+ * href= "https://rocm.docs.hcu.com/projects/HIP/en/latest/how-to/kernel_language_cpp_support.html#kernel-compilation">
  * Kernel Compilation</a> in the HIP kernel language C++ support, or
  * <a
- * href="https://rocm.docs.amd.com/projects/HIP/en/latest/how-to/hip_rtc.html">HIP runtime compilation (HIP RTC)</a>.
+ * href="https://rocm.docs.hcu.com/projects/HIP/en/latest/how-to/hip_rtc.html">HIP runtime compilation (HIP RTC)</a>.
  *
  * @param [in] image  The pointer to the location of data
  * @param [out] module  Retuned module
@@ -9358,7 +9358,7 @@ hipError_t hipMemMap(void* ptr, size_t size, size_t offset, hipMemGenericAllocat
  * @param [in] count - number of hipArrayMapInfo in mapInfoList.
  * @param [in] stream - stream identifier for the stream to use for map or unmap operations.
  * @returns #hipSuccess, #hipErrorInvalidValue, #hipErrorNotSupported
- * @warning This API is under development. Currently it is not supported on AMD
+ * @warning This API is under development. Currently it is not supported on HCU
  *          GPUs and returns #hipErrorNotSupported.
  */
 hipError_t hipMemMapArrayAsync(hipArrayMapInfo* mapInfoList, unsigned int count,
@@ -10167,10 +10167,10 @@ static inline __host__ hipError_t hipLaunchKernelEx(const hipLaunchConfig_t* con
 #endif
 
 
-#elif !defined(__HIP_PLATFORM_AMD__) && defined(__HIP_PLATFORM_NVIDIA__)
+#elif !defined(__HIP_PLATFORM_HCU__) && defined(__HIP_PLATFORM_NVIDIA__)
 #include "hip/nvidia_detail/nvidia_hip_runtime_api.h"
 #else
-#error ("Must define exactly one of __HIP_PLATFORM_AMD__ or __HIP_PLATFORM_NVIDIA__");
+#error ("Must define exactly one of __HIP_PLATFORM_HCU__ or __HIP_PLATFORM_NVIDIA__");
 #endif
 
 
@@ -10264,8 +10264,8 @@ static inline hipError_t hipMallocManaged(T** devPtr, size_t size,
 /**
  * @}
  */
-#include <hip/amd_detail/amd_hip_runtime_pt_api.h>
+#include <hip/hcu_detail/hcu_hip_runtime_pt_api.h>
 
 #if USE_PROF_API
-#include <hip/amd_detail/hip_prof_str.h>
+#include <hip/hcu_detail/hip_prof_str.h>
 #endif

@@ -21,7 +21,7 @@
 /** \mainpage ROCTX API Specification
  *
  * \section introduction Introduction
- * ROCTX is a library that implements the AMD code annotation API.  It provides
+ * ROCTX is a library that implements the HCU code annotation API.  It provides
  * the support necessary to annotate events and code ranges in applications.
  */
 

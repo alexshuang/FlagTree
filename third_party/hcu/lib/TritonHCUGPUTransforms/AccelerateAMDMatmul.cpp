@@ -22,7 +22,7 @@ using ::mlir::LLVM::HCU::isChainDotHead;
 using ::mlir::LLVM::HCU::isChainDotTail;
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "tritonamd-accelerate-matmul"
+#define DEBUG_TYPE "tritonhcu-accelerate-matmul"
 
 namespace mlir {
 

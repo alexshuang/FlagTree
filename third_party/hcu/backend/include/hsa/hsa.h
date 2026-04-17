@@ -7,11 +7,11 @@
 //
 // Developed by:
 //
-//                 AMD Research and AMD HSA Software Development
+//                 HCU Research and HCU HSA Software Development
 //
 //                 Advanced Micro Devices, Inc.
 //
-//                 www.amd.com
+//                 www.hcu.com
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -488,51 +488,51 @@ typedef enum {
   /**
   * String containing the ROCr build identifier.
   */
-  HSA_AMD_SYSTEM_INFO_BUILD_VERSION = 0x200,
+  HSA_HCU_SYSTEM_INFO_BUILD_VERSION = 0x200,
   /**
-   * Returns true if hsa_amd_svm_* APIs are supported by the driver.  The type of
+   * Returns true if hsa_hcu_svm_* APIs are supported by the driver.  The type of
    * this attribute is bool.
    */
-  HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED = 0x201,
+  HSA_HCU_SYSTEM_INFO_SVM_SUPPORTED = 0x201,
   // TODO: Should this be per Agent?
   /**
    * Returns true if all Agents have access to system allocated memory (such as
    * that allocated by mmap, malloc, or new) by default.
    * If false then system allocated memory may only be made SVM accessible to
-   * an Agent by declaration of accessibility with hsa_amd_svm_set_attributes.
+   * an Agent by declaration of accessibility with hsa_hcu_svm_set_attributes.
    * The type of this attribute is bool.
    */
-  HSA_AMD_SYSTEM_INFO_SVM_ACCESSIBLE_BY_DEFAULT = 0x202,
+  HSA_HCU_SYSTEM_INFO_SVM_ACCESSIBLE_BY_DEFAULT = 0x202,
   /**
    * Returns true if mwaitx is enabled on this system
    * The type of this attribute is bool.
    */
-  HSA_AMD_SYSTEM_INFO_MWAITX_ENABLED = 0x203,
+  HSA_HCU_SYSTEM_INFO_MWAITX_ENABLED = 0x203,
   /**
    * Returns true if DMABUF APIs are supported by the driver.  The type of
    * this attribute is bool.
    */
-  HSA_AMD_SYSTEM_INFO_DMABUF_SUPPORTED = 0x204,
+  HSA_HCU_SYSTEM_INFO_DMABUF_SUPPORTED = 0x204,
   /**
    * Returns true if Virtual Memory APIs are supported by the driver.  The type of
    * this attribute is bool.
    */
-  HSA_AMD_SYSTEM_INFO_VIRTUAL_MEM_API_SUPPORTED = 0x205,
+  HSA_HCU_SYSTEM_INFO_VIRTUAL_MEM_API_SUPPORTED = 0x205,
   /**
    * Returns true if XNACK is enabled on this system.  The type of
    * this attribute is bool.
    */
-  HSA_AMD_SYSTEM_INFO_XNACK_ENABLED = 0x206,
+  HSA_HCU_SYSTEM_INFO_XNACK_ENABLED = 0x206,
   /**
    * Major version of the HSA runtime extension specification supported by the
    * implementation. The type of this attribute is uint16_t.
    */
-  HSA_AMD_SYSTEM_INFO_EXT_VERSION_MAJOR = 0x207,
+  HSA_HCU_SYSTEM_INFO_EXT_VERSION_MAJOR = 0x207,
   /**
    * Minor version of the HSA runtime extension specification supported by the
    * implementation. The type of this attribute is uint16_t.
    */
-  HSA_AMD_SYSTEM_INFO_EXT_VERSION_MINOR = 0x208,
+  HSA_HCU_SYSTEM_INFO_EXT_VERSION_MINOR = 0x208,
 } hsa_system_info_t;
 
 /**
@@ -583,29 +583,29 @@ typedef enum {
    */
   HSA_EXTENSION_STD_LAST = 3,
   /**
-   * First AMD extension number.
+   * First HCU extension number.
    */
-  HSA_AMD_FIRST_EXTENSION = 0x200,
+  HSA_HCU_FIRST_EXTENSION = 0x200,
   /**
    * Profiler extension.
    */
-  HSA_EXTENSION_AMD_PROFILER = 0x200,
+  HSA_EXTENSION_HCU_PROFILER = 0x200,
   /**
    * Loader extension.
    */
-  HSA_EXTENSION_AMD_LOADER = 0x201,
+  HSA_EXTENSION_HCU_LOADER = 0x201,
   /**
    * AqlProfile extension.
    */
-  HSA_EXTENSION_AMD_AQLPROFILE = 0x202,
+  HSA_EXTENSION_HCU_AQLPROFILE = 0x202,
   /**
    * PC Sampling extension.
    */
-  HSA_EXTENSION_AMD_PC_SAMPLING = 0x203,
+  HSA_EXTENSION_HCU_PC_SAMPLING = 0x203,
   /**
-   * Last AMD extension.
+   * Last HCU extension.
    */
-  HSA_AMD_LAST_EXTENSION = 0x203
+  HSA_HCU_LAST_EXTENSION = 0x203
 } hsa_extension_t;
 
 /**
@@ -2271,7 +2271,7 @@ typedef enum {
    * returned queue to discover queue size. Queues of this type are reference
    * counted and require a matching number of ::hsa_queue_destroy calls to
    * release. Use of multiproducer queue mechanics is required. See
-   * ::HSA_AMD_AGENT_INFO_COOPERATIVE_QUEUES to query agent support for this
+   * ::HSA_HCU_AGENT_INFO_COOPERATIVE_QUEUES to query agent support for this
    * type.
    */
   HSA_QUEUE_TYPE_COOPERATIVE = 2
@@ -3610,7 +3610,7 @@ typedef struct hsa_isa_s {
  *
  * @param[in] name Vendor-specific name associated with a a particular
  * instruction set architecture. @p name must start with the vendor name and a
- * colon (for example, "AMD:"). The rest of the name is vendor-specific. Must be
+ * colon (for example, "HCU:"). The rest of the name is vendor-specific. Must be
  * a NUL-terminated string.
  *
  * @param[out] isa Memory location where the HSA runtime stores the ISA handle

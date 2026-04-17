@@ -1,17 +1,14 @@
 from triton.backends.compiler import BaseBackend, GPUTarget, Language
-from triton._C.libtriton import ir, passes, llvm, hcu, distributed
+from triton._C.libtriton import ir, passes, llvm, hcu
 from triton import knobs
-from triton.runtime.errors import HSACOError
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 from types import ModuleType
 import hashlib
 import tempfile
 import re
-import subprocess
 import functools
 import warnings
-import os
 from pathlib import Path
 
 
@@ -42,11 +39,12 @@ class HIPOptions:
     arch: str = None
     # We have native support for OCP fp8 variants since CDNA4/RDNA4. For earlier generations,
     # we software emulate the support for them.
-    # For leagcy HCU, enable software emulation for fp8e4nv conversions.
-    supported_fp8_dtypes: Tuple[str] = ("fp8e4nv", "fp8e5")
+    # UZ fp8 variants (fp8e4b8 and fp8e5b16) are natively supported for CDNA3. For other
+    # architectures they are software emulated.
+    supported_fp8_dtypes: Tuple[str] = ("fp8e4nv", "fp8e5", "fp8e5b16", "fp8e4b8")
     deprecated_fp8_dot_operand_dtypes: Tuple[str] = ()
     default_dot_input_precision: str = "ieee"
-    allowed_dot_input_precisions: Tuple[str] = ("ieee", )
+    allowed_dot_input_precisions: Tuple[str] = ("ieee", 'bf16x3', 'bf16x6')
     enable_fp_fusion: bool = True
     launch_cooperative_grid: bool = False
     matrix_instr_nonkdim: int = 0
@@ -55,28 +53,15 @@ class HIPOptions:
     max_num_imprecise_acc_default: int = 0
     backend_name: str = 'hip'
     instrumentation_mode: str = ""
-    optimize_epilogue: bool = True
-    # 0: mfma
-    # 1: mmac legacy
-    # 2: mmac interleave
-    # 3: mmac transpose
-    # 4: mmac interleave and transpose
-    mmac_layout_force: int = -1
 
-    async_copy_use_single_buffer: bool = True
-
-    # The following option provides hints to the AMDGPU backend regarding instruction scheduling
+    # The following option provides hints to the HCUGPU backend regarding instruction scheduling
     # for all `tt.dot` operations in a kernel. The "none" variant preserves the default
-    # instruction scheduling of the AMDGPU backend which aims at maximizing occupancy.
+    # instruction scheduling of the HCUGPU backend which aims at maximizing occupancy.
     # The option is experimental and may change at any time regarding its semantics and/or may
     # be gone entirely anytime.
     #
     # Current experimental scheduling variants:
     #
-    # local-prefetch: implements instruction scheduling similar to the one from the ROCm Composable
-    #                 Kernel library. Note, this variant requires the use of buffer load/store ops
-    #                 and a special software pipelining style - i.e., 1x LDS and 1x register
-    #                 prefetch buffers for each GEMM tile.
     # attention: enables a bunch of optimizations for attention kernels, including:
     #            - iglp 2 and sched.barrier around it
     #            - sink-insts-to-avoid-spills flag to avoid register spills
@@ -89,21 +74,6 @@ class HIPOptions:
     # Option allows to set multiple variants divided by commas:
     # schedule_hint="attention,memory-bound-attention"
     schedule_hint: str = 'none'
-
-    # Extend options for HCU(legacy), used for old arch like gfx928, gfx936
-    # 1. set scheduling latency for mmac and ds:
-    #    - none: use default scheduling latency which equal mmac1-ds5
-    #    - see get_options_args() to get more options.
-    sched_latency: str = 'none'
-
-    # wasp options
-    wasp_enabled: bool = False
-    wdra_enabled: bool = False
-    wasp_num_load_warps: int = None
-    wasp_num_mma_warps: int = None
-    wdra_num_load_regs: int = None
-    wdra_num_mma_regs_main: int = None
-    wdra_num_mma_regs_tail: int = None
 
     def __post_init__(self):
         gfx_major = int(self.arch[3:-2])  # Drop "gfx" prefix and minor/patch number
@@ -118,16 +88,11 @@ class HIPOptions:
             )
             object.__setattr__(self, 'kpack', 1)
 
-        # default_libdir = Path(__file__).parent / 'lib'
-        # HCU toolchain uses this path.
-        default_libdir = Path(HIPBackend.path_to_rocm()) / 'amdgcn/bitcode/'
+        default_libdir = Path(__file__).parent / 'lib'
         extern_libs = {} if self.extern_libs is None else dict(self.extern_libs)
-        for lib in ["ocml", "ockl", "hip", "opencl"]:   # Add hip and opencl for HCU toolchain.
+        for lib in ["ocml", "ockl"]:
             extern_libs[lib] = str(default_libdir / f'{lib}.bc')
-        # rocshmem_device_lib = str(default_libdir / 'librocshmem_device.bc')
-
         object.__setattr__(self, 'extern_libs', tuple(extern_libs.items()))
-        # object.__setattr__(self, 'rocshmem_device_lib', rocshmem_device_lib)
 
     def hash(self):
         key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
@@ -172,29 +137,7 @@ class HIPBackend(BaseBackend):
 
         if "enable_fp_fusion" not in opts:
             args["enable_fp_fusion"] = knobs.language.default_fp_fusion
-
-        if "optimize_epilogue" not in opts:
-            args["optimize_epilogue"] = knobs.hcu.optimize_epilogue
-
-        args.update({k: opts[k] for k in HIPOptions.__dataclass_fields__.keys() \
-                     if k in opts and opts[k] is not None})
-
-        if args.get("wasp_enabled"):
-            if args.get("wdra_enabled"):
-                assert args["wasp_num_load_warps"] == 4
-                assert args["wasp_num_mma_warps"] in [4, 8]
-            else:
-                args.pop("wdra_num_load_regs", None)
-                args.pop("wdra_num_mma_regs_main", None)
-                args.pop("wdra_num_mma_regs_tail", None)
-        else:
-            assert not args.get("wdra_enabled"), "wdra_enabled is only supported when wasp_enabled is True"
-            args.pop("wasp_num_load_warps", None)
-            args.pop("wasp_num_mma_warps", None)
-            args.pop("wdra_num_load_regs", None)
-            args.pop("wdra_num_mma_regs_main", None)
-            args.pop("wdra_num_mma_regs_tail", None)
-
+        args.update({k: opts[k] for k in HIPOptions.__dataclass_fields__.keys() if k in opts and opts[k] is not None})
         return HIPOptions(**args)
 
     def pack_metadata(self, metadata):
@@ -209,16 +152,10 @@ class HIPBackend(BaseBackend):
 
     def get_module_map(self) -> Dict[str, ModuleType]:
         from triton.language.extra.hip import libdevice
-        # from triton.language.extra.hip import librocshmem_device
-        from triton.language.extra.hip import libnvshmem_device
 
-        return {
-            "triton.language.extra.libdevice": libdevice,
-            "triton.language.extra.libshmem_device": libnvshmem_device
-        }
+        return {"triton.language.extra.libdevice": libdevice}
 
     def load_dialects(self, ctx):
-        distributed.ir.load_dialects(ctx)
         hcu.load_dialects(ctx)
         if HIPBackend.instrumentation:
             HIPBackend.instrumentation.load_dialects(ctx)
@@ -249,129 +186,6 @@ class HIPBackend(BaseBackend):
         return ret
 
     @staticmethod
-    def path_to_rocm():
-        rocm_path = os.getenv("ROCM_PATH")
-        if rocm_path is not None:
-            return rocm_path
-
-        default_rocm_path = "/opt/rocm"
-        if Path(default_rocm_path).is_dir():
-            return default_rocm_path
-
-        fallback_rocm_path = "/opt/dtk"
-        if Path(fallback_rocm_path).is_dir():
-            return fallback_rocm_path
-
-        return default_rocm_path
-
-    @staticmethod
-    def path_to_rocm_lld():
-        rocm_path = HIPBackend.path_to_rocm()
-        # Check env path for ld.lld
-        lld_env_path = knobs.hcu.lld_path
-        if lld_env_path is not None:
-            lld = Path(lld_env_path)
-            if lld.is_file():
-                return lld
-        # Check backend for ld.lld (used for pytorch wheels)
-        lld = Path(__file__).parent / "llvm/bin/ld.lld"
-        if lld.is_file():
-            return lld
-        lld = Path(f"{rocm_path}/llvm/bin/ld.lld")
-        if lld.is_file():
-            return lld
-        lld = Path("/usr/bin/ld.lld")
-        if lld.is_file():
-            return lld
-        raise Exception(f"ROCm linker {rocm_path}/llvm/bin/ld.lld not found. Set 'TRITON_HIP_LLD_PATH' to its path.")
-
-    @staticmethod
-    def path_to_rocm_clang():
-        rocm_path = HIPBackend.path_to_rocm()
-        # Check env path for clang
-        clang_env_path = os.getenv("TRITON_HIP_CLANG_PATH",
-                                    # By default, use clang-18
-                                   f"{rocm_path}/llvm/bin/clang-18")
-        if clang_env_path is not None:
-            clang = Path(clang_env_path)
-            if clang.is_file():
-                return clang
-        clang = Path(f"{rocm_path}/llvm/bin/clang")
-        if clang.is_file():
-            return clang
-        clang = Path("/usr/bin/clang")
-        if clang.is_file():
-            return clang
-        raise Exception(f"ROCm compiler {rocm_path}/llvm/bin/clang not found. Set 'TRITON_HIP_CLANG_PATH' to its path.")
-
-    @staticmethod
-    def _get_clang_args(metadata, options):
-        arch_args = {
-            "gfx928": [
-                        "-mllvm=-support-512-vgprs=true",
-                      ],
-            "gfx936": [
-                        "-mllvm=-support-768-vgprs=true",
-                      ],
-            "gfx938": [
-                        "-mllvm=-support-768-vgprs=true",
-                      ],
-            "gfx946": [
-                        "-mllvm=-support-512-vgprs=true",
-                      ],
-            "gfx92a": [
-                        "-mllvm=-support-512-vgprs=true",
-                      ],
-        }
-        if options.arch in arch_args:
-            options_args = arch_args[options.arch]
-        else:
-            raise ValueError(f"Unknown arch: {options.arch}")
-
-        version_args = {
-            "18": [
-                "-mllvm=-enable-hcu-approx-func-fp-math=true",
-                "-mllvm=-hcu-update-wait-by-reverse-search=true",
-            ],
-        }
-        clang_out = subprocess.check_output([HIPBackend.path_to_rocm_clang(), "--version"])
-        match = re.search(r"version\s*(?P<major>\d+)\.(?P<minor>\d+)([\d.]+)?", clang_out.decode())
-        clang_major = match.group("major")
-        clang_minor = match.group("minor")
-        if clang_major in version_args:
-            options_args.extend(version_args[clang_major])
-
-        if options.sched_latency != 'none':
-            sched_latency_args = {
-                "mmac5-ds10": ["-mllvm=-enable-latency-hack=true", "-mllvm=-mmac-latency=5", "-mllvm=-ds-load-store-latency=10"],
-                "mmac5-ds6" : ["-mllvm=-enable-latency-hack=true", "-mllvm=-mmac-latency=5", "-mllvm=-ds-load-store-latency=6" ],
-            }
-            if options.sched_latency in sched_latency_args:
-                options_args.extend(sched_latency_args[options.sched_latency])
-            else:
-                raise ValueError(f"Unsupported scheduling latency: {options.sched_latency}")
-
-        if options.schedule_hint == "llvm-iglp-8":
-            if (options.num_warps >= 4 and metadata["shared"] <= 32*1024):
-                options_args.extend(["-mllvm=-amdgpu-iglp8-advance-sched-group-cnt=2"])
-            if options.kpack == 2:
-                options_args.extend(["-mllvm=-amdgpu-iglp8-interleave-ds-cnt-per-mfma=1"])
-
-        clang_args = [
-            "-target", hcu.TARGET_TRIPLE,
-            f"-mcpu={options.arch}:xnack-",
-            "-mllvm=-check-valu-data-forward-hazards=0",
-            "-mllvm=-disable-cluster-lds-memops=true",
-            # Note: when register spill after ds_read_matrix, result is wrong for compiler backend. disable current.
-            "-mllvm=-hcu-pre-emit-load-store-opt=false",
-            "-mllvm=-vgpr-greedy-alloc-mode=local-wave" if options.wdra_enabled else "",
-            *options_args,
-            "-O3",
-        ]
-
-        return clang_args
-
-    @staticmethod
     def make_ttir(mod, metadata, options):
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
@@ -394,9 +208,6 @@ class HIPBackend(BaseBackend):
         pm.enable_debug()
         passes.ttir.add_convert_to_ttgpuir(pm, f"hip:{options.arch}", options.num_warps, options.warp_size,
                                            options.num_ctas)
-        # TritonDistributed Extension
-        # distributed.passes.ttir.add_convert_to_ttgpuir_ext(pm, f"hip:{options.arch}", options.num_warps,
-        #                                                    options.warp_size, options.num_ctas)
         pm.run(mod, 'make_ttgir_early')
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
@@ -405,18 +216,10 @@ class HIPBackend(BaseBackend):
         passes.ttgpuir.add_f32_dot_tc(pm, emuTF32)
         passes.ttgpuir.add_remove_layout_conversions(pm)
         passes.ttgpuir.add_optimize_thread_locality(pm)
-        hcu.passes.ttgpuir.add_accelerate_matmul(pm, options.arch,
-                                                 options.matrix_instr_nonkdim,
-                                                 options.kpack,
-                                                 options.mmac_layout_force)
+        hcu.passes.ttgpuir.add_accelerate_matmul(pm, options.arch, options.matrix_instr_nonkdim, options.kpack)
         passes.ttgpuir.add_remove_layout_conversions(pm)
-        if options.optimize_epilogue:
-            hcu.passes.ttgpuir.add_optimize_epilogue(pm)
+        hcu.passes.ttgpuir.add_optimize_epilogue(pm)
         hcu.passes.ttgpuir.add_optimize_dot_operands(pm, options.arch)
-
-        hcu.passes.ttgpuir.add_mls_encoding_insertion(pm)
-        passes.ttgpuir.add_remove_layout_conversions(pm)
-
         hcu.passes.ttgpuir.add_hoist_layout_conversions(pm)
 
         passes.ttgpuir.add_fuse_nested_loops(pm)
@@ -424,27 +227,11 @@ class HIPBackend(BaseBackend):
         passes.ttir.add_triton_licm(pm)
         passes.common.add_canonicalizer(pm)
 
-        global_prefetch = getattr(knobs.hcu, "global_prefetch", 0)
-        local_prefetch = getattr(knobs.hcu, "local_prefetch", 0)
         use_async_copy = knobs.hcu.use_async_copy
-
-        # The `local-prefetch` scheduling variant requires turning on buffer ops.
-        if options.schedule_hint == "local-prefetch":
-            global_prefetch = 1
-
-        async_copy_single_buffer = options.async_copy_use_single_buffer and (options.num_stages == 2 and not global_prefetch)
-        hcu.passes.ttgpuir.add_mls_stream_pipeline(pm, options.num_stages, global_prefetch, async_copy_single_buffer)
-
         use_block_pingpong = is_pingpong_schedule_enabled(options.arch, use_async_copy)
-        hcu.passes.ttgpuir.add_schedule_loops(pm, options.num_stages)
 
-        if not options.wasp_enabled:
-            if hasattr(hcu.passes.ttgpuir, "add_stream_pipeline"):
-                hcu.passes.ttgpuir.add_stream_pipeline(
-                    pm, options.num_stages, global_prefetch, local_prefetch, use_async_copy, use_block_pingpong
-                )
-            else:
-                hcu.passes.ttgpuir.add_pipeline(pm, use_async_copy, use_block_pingpong)
+        hcu.passes.ttgpuir.add_schedule_loops(pm, options.num_stages)
+        hcu.passes.ttgpuir.add_pipeline(pm, use_async_copy, use_block_pingpong)
         if use_async_copy:
             hcu.passes.ttgpuir.add_coalesce_async_copy(pm, options.arch)
         passes.common.add_canonicalizer(pm)
@@ -452,9 +239,6 @@ class HIPBackend(BaseBackend):
             for hint in options.schedule_hint.split(","):
                 hcu.passes.ttgpuir.insert_instruction_sched_hints(pm, hint)
         passes.ttgpuir.add_remove_layout_conversions(pm)
-
-        hcu.passes.ttgpuir.add_mls_lowering_pass(pm)
-
         passes.ttgpuir.add_reduce_data_duplication(pm)
         if is_in_thread_transpose_enabled(options.arch):
             hcu.passes.ttgpuir.add_in_thread_transpose(pm)
@@ -462,15 +246,6 @@ class HIPBackend(BaseBackend):
         hcu.passes.ttgpuir.add_reorder_instructions(pm)
         if use_block_pingpong and options.num_stages > 1:
             hcu.passes.ttgpuir.add_block_pingpong(pm, options.num_stages)
-
-        if options.wasp_enabled:
-            passes.ttgpuir.add_warp_specialize_hcu(pm, 2, options.wdra_enabled, options.wasp_num_load_warps, options.wasp_num_mma_warps)
-            hcu.passes.ttgpuir.add_accelerate_matmul(pm, options.arch, options.matrix_instr_nonkdim, options.kpack, options.mmac_layout_force)
-            passes.ttgpuir.add_remove_layout_conversions(pm)
-            if options.optimize_epilogue:
-                hcu.passes.ttgpuir.add_optimize_epilogue(pm)
-            passes.ttgpuir.add_optimize_dot_operands(pm, True)
-            hcu.passes.ttgpuir.add_hoist_layout_conversions(pm)
 
         if knobs.hcu.use_buffer_ops:
             hcu.passes.ttgpuir.add_canonicalize_pointers(pm)
@@ -486,8 +261,6 @@ class HIPBackend(BaseBackend):
         passes.common.add_canonicalizer(pm)
         passes.common.add_cse(pm)
         passes.common.add_symbol_dce(pm)
-        if 1:#use_async_copy:
-            hcu.passes.ttgpuir.add_update_async_wait_count(pm, options.arch)
         pm.run(mod, 'make_ttgir')
         metadata["tensordesc_meta"] = mod.get_tensordesc_metadata()
         return mod
@@ -540,8 +313,6 @@ class HIPBackend(BaseBackend):
         ##    For now it is used as a controller for developers only.
         __HIP_FTZ = True
         hcu.passes.ttgpuir.add_to_llvmir(pm, options.arch, __HIP_FTZ)
-        # TritonDistributed Extension: distributed -> llvm
-        distributed.passes.ttgpuir.hcu.add_distributed_to_llvm(pm, options.arch, __HIP_FTZ)
         passes.common.add_canonicalizer(pm)
         passes.common.add_cse(pm)
 
@@ -550,15 +321,6 @@ class HIPBackend(BaseBackend):
         passes.common.add_canonicalizer(pm)
         passes.common.add_cse(pm)
         passes.common.add_symbol_dce(pm)
-
-        if options.wasp_enabled:
-            hcu.passes.ttgpuir.add_warp_specialize_to_llvm(pm, options.arch, options.wasp_num_load_warps,
-                options.wasp_num_mma_warps, options.wdra_enabled, options.wdra_num_load_regs or 0,
-                options.wdra_num_mma_regs_main or 0, options.wdra_num_mma_regs_tail or 0)
-            passes.convert.add_arith_to_llvmir(pm)
-            passes.common.add_canonicalizer(pm)
-            passes.common.add_cse(pm)
-            passes.common.add_symbol_dce(pm)
 
         if options.schedule_hint.lower() != "none":
             hcu.passes.ttgpuir.lower_instruction_sched_hints(pm, options.arch, options.num_stages)
@@ -571,8 +333,6 @@ class HIPBackend(BaseBackend):
             passes.llvmir.add_di_scope(pm)
 
         hcu.passes.ttgpuir.add_builtin_func_to_llvmir(pm, __HIP_FTZ)
-        # TritonDistributed Extension: libdevice -> llvm
-        distributed.passes.ttgpuir.hcu.add_lib_device_to_llvmir(pm, __HIP_FTZ)
         pm.run(mod, 'make_llir')
 
         if knobs.compilation.dump_ir_extract_di_local_variables:
@@ -612,22 +372,15 @@ class HIPBackend(BaseBackend):
         hcu.set_bool_control_constant(llvm_mod, "__oclc_unsafe_math_opt", False)
         hcu.set_bool_control_constant(llvm_mod, "__oclc_wavefrontsize64", options.warp_size == 64)
 
-        # WarpSpecialize Passes would set this attribute
-        total_num_warps = src.get_int_attr("ttg.total-num-warps")
-        total_num_warps = total_num_warps if total_num_warps is not None else options.num_warps
-
         # Set kernel attributes first given this may affect later optimizations.
         fns = [fn for fn in llvm_mod.get_functions() if not fn.is_declaration()]
-        # If wdra is enabled, this attribute is required by the LLVM backend.
-        if options.wdra_enabled:
-            fns[0].add_fn_attr("hcu-wdra-waves-per-tg", str(total_num_warps))
         # The public kernel should be kernel 0.
         fns[0].set_calling_conv(hcu.CALLING_CONV_HCUGPU_KERNEL)
-        fns[0].add_fn_attr("amdgpu-flat-work-group-size", f"1,{options.num_warps*options.warp_size}")
+        fns[0].add_fn_attr("hcugpu-flat-work-group-size", f"1,{options.num_warps*options.warp_size}")
         if "memory-bound-attention" in options.schedule_hint.split(','):
-            fns[0].add_fn_attr("amdgpu-sched-strategy", "iterative-ilp")
+            fns[0].add_fn_attr("hcugpu-sched-strategy", "iterative-ilp")
         fns[0].add_fn_attr("uniform-work-group-size", "true")
-        # LLVM AMDGPU backend supports the attribute "amdgpu-waves-per-eu"="<min>[, <max>]".
+        # LLVM HCUGPU backend supports the attribute "hcugpu-waves-per-eu"="<min>[, <max>]".
         # This attribute may be attached to a kernel function definition and is an optimization hint.
         # <min> parameter specifies the requested minimum number of waves per EU, and optional <max> parameter
         # specifies the requested maximum number of waves per EU (must be >= <min> if specified).
@@ -636,7 +389,7 @@ class HIPBackend(BaseBackend):
         # implies the default behavior (no limits).
         # Specifying N, N forces LLVM to focus on a single register count, simplifies some heuristics
         # and may improve scheduling.
-        fns[0].add_fn_attr("amdgpu-waves-per-eu", f"{options.waves_per_eu}, {options.waves_per_eu}")
+        fns[0].add_fn_attr("hcugpu-waves-per-eu", f"{options.waves_per_eu}, {options.waves_per_eu}")
         denormal_mode = "preserve-sign" if options.allow_flush_denorm else "ieee"
         fns[0].add_fn_attr("denormal-fp-math-f32", denormal_mode)
         if knobs.compilation.enable_asan:
@@ -647,11 +400,6 @@ class HIPBackend(BaseBackend):
         # to user SGPRs so that the kernel does not need to s_load its arguments
         # from memory.
         hcu.set_all_fn_arg_inreg(fns[0])
-        metadata['use_nvshmem'] = False
-        for k in llvm_mod.get_functions():
-            if "nvshmem" in k.name and k.is_declaration():
-                metadata['use_nvshmem'] = True
-                break
 
         if knobs.compilation.enable_asan:
             default_libdir = Path(__file__).parent / 'lib'
@@ -666,11 +414,6 @@ class HIPBackend(BaseBackend):
             if len(paths) > 0:
                 llvm.link_extern_libs(llvm_mod, paths)
 
-        # if options.rocshmem_device_lib and metadata['use_rocshmem']:
-        if metadata['use_nvshmem']:
-            default_libdir = Path(__file__).parent / 'lib'
-            llvm.link_extern_libs(llvm_mod, [str(default_libdir / "libnvshmem_device.bc")])
-
         llvm.optimize_module(llvm_mod, llvm.OPTIMIZE_O3, options.arch, '', [], options.enable_fp_fusion)
 
         # Architectures with architected SGPRs store the workgroup id in ttmp9 (X) and ttmp7 (Y[15:0], Z[31:16]).
@@ -678,9 +421,9 @@ class HIPBackend(BaseBackend):
         # optimize_module from calls to @llvm.amdgcn.workgroup.id.x/y/z(). We cannot rely on this because a
         # dispatch dimensions might be used even if there is no program_id() call for it.
         if hcu.has_architected_sgprs(options.arch):
-            fns[0].remove_fn_attr("amdgpu-no-workgroup-id-x")
-            fns[0].remove_fn_attr("amdgpu-no-workgroup-id-y")
-            fns[0].remove_fn_attr("amdgpu-no-workgroup-id-z")
+            fns[0].remove_fn_attr("hcugpu-no-workgroup-id-x")
+            fns[0].remove_fn_attr("hcugpu-no-workgroup-id-y")
+            fns[0].remove_fn_attr("hcugpu-no-workgroup-id-z")
 
         if knobs.hcu.scalarize_packed_fops:
             hcu.add_scalarize_packed_fops_llvm_pass(fns[0])
@@ -696,92 +439,43 @@ class HIPBackend(BaseBackend):
         hcu.disable_print_inline(llvm_mod)
         return str(llvm_mod)
 
-    ## TODO: [hcu] integrate with rocshmem
     @staticmethod
     def make_amdgcn(src, metadata, options):
         # Find kernel names (there should only be one)
         # We get the name at the last possible step to accommodate `triton.compile`
         # on user-provided LLVM
-        names = re.findall(r"define amdgpu_kernel void @([a-zA-Z_][a-zA-Z0-9_]*)", src)
+        names = re.findall(r"define hcugpu_kernel void @([a-zA-Z_][a-zA-Z0-9_]*)", src)
         assert len(names) == 1
         metadata["name"] = names[0]
         # llvm -> hsaco
         flags = []
-        # The sink-insts-to-avoid-spills flag asks LLVM backend to sink instructions
-        # into loops to avoid register spills in the MachineSinking pass, while it
-        # can also lead to regression in some cases. But from current observation,
-        # the regression is not significant. It would be better to have some heuristics.
-        if options.schedule_hint == 'attention':
-            flags.append('sink-insts-to-avoid-spills')
-        # features = '-real-true16' if 'gfx11' in options.arch else ''
-        # amdgcn = llvm.translate_to_asm(src, hcu.TARGET_TRIPLE, options.arch, features, flags, options.enable_fp_fusion,
-        #                                False)
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix=".ll", delete=False) as f:
-                llir_file = f.name
-                f.write(str(src))
-
-            asm_file = tempfile.mktemp(suffix=".amdgcn")
-
-            clang_path = HIPBackend.path_to_rocm_clang()
-            clang_args = HIPBackend._get_clang_args(metadata, options) + flags
-
-            # Compile to ASM
-            asm_command = [clang_path] + clang_args + [llir_file, "-S", "-o", asm_file]
-            result = subprocess.run(asm_command, check=True, capture_output=True, text=True)
-            if options.wdra_enabled:
-                log = result.stdout + result.stderr
-                print(log, flush=True)
-
-            with open(asm_file, "r") as fd_out:
-                amdgcn = fd_out.read()
-
-        except subprocess.CalledProcessError as e:
-            print(f"Compilation failed: {e.stderr}")
-            raise HSACOError(f"Compilation failed: {e.stderr}") from e
-        except IOError as e:
-            print(f"File operation failed: {str(e)}")
-            raise HSACOError(f"File operation failed: {str(e)}") from e
-        finally:
-            # Clean up temporary files
-            for file in [llir_file, asm_file]:
-                if os.path.exists(file):
-                    os.remove(file)
+        features = '-real-true16' if 'gfx11' in options.arch else ''
+        ir_hash = hashlib.sha256(src.encode("utf-8")).hexdigest()
+        dump_file_id = names[0] + '_' + ir_hash
+        _ = llvm.translate_to_mir(src, hcu.TARGET_TRIPLE, options.arch, features, flags, options.enable_fp_fusion,
+                                  dump_file_id)
+        llvm.dump_sched_dag(src, hcu.TARGET_TRIPLE, options.arch, features, flags, options.enable_fp_fusion,
+                            dump_file_id)
+        amdgcn = llvm.translate_to_asm(src, hcu.TARGET_TRIPLE, options.arch, features, flags, options.enable_fp_fusion,
+                                       False)
         if knobs.hcu.dump_amdgcn:
-            print("// -----// AMDGCN Dump //----- //")
+            print("// -----// HCUGCN Dump //----- //")
             print(amdgcn)
         return amdgcn
 
     @staticmethod
     def make_hsaco(src, metadata, options):
-        # target_features = ''
-        # if knobs.compilation.enable_asan:
-        #     target_features = '+xnack'
-        # hsaco = hcu.assemble_amdgcn(src, options.arch, target_features)
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix=".s", delete=False) as f:
-                asm_file = f.name
-                f.write(str(src))
-
-            hsaco_file = tempfile.mktemp(suffix=".hsaco")
-
-            clang_path = HIPBackend.path_to_rocm_clang()
-            clang_args = HIPBackend._get_clang_args(metadata,options)
-
-            # Compile to HSACO
-            hsaco_command = [clang_path] + clang_args + [asm_file, "-x", "assembler", "-o", hsaco_file]
-            subprocess.run(hsaco_command, check=True, capture_output=True, text=True)
-
-            with open(hsaco_file, "rb") as fd_out:
+        target_features = ''
+        if knobs.compilation.enable_asan:
+            target_features = '+xnack'
+        hsaco = hcu.assemble_amdgcn(src, options.arch, target_features)
+        with tempfile.NamedTemporaryFile() as tmp_out:
+            with tempfile.NamedTemporaryFile() as tmp_in:
+                with open(tmp_in.name, "wb") as fd_in:
+                    fd_in.write(hsaco)
+                hcu.link_hsaco(tmp_in.name, tmp_out.name)
+            with open(tmp_out.name, "rb") as fd_out:
                 ret = fd_out.read()
-
-        except subprocess.CalledProcessError as e:
-            print(f"Compilation failed: {e.stderr}")
-            raise HSACOError(f"Compilation failed: {e.stderr}") from e
-        except IOError as e:
-            print(f"File operation failed: {str(e)}")
-            raise HSACOError(f"File operation failed: {str(e)}") from e
-
         return ret
 
     def add_stages(self, stages, options, language):
@@ -798,5 +492,12 @@ class HIPBackend(BaseBackend):
 
     @functools.lru_cache()
     def hash(self):
-        version = subprocess.check_output([HIPBackend.path_to_rocm_clang(), "--version"], encoding='utf-8')
-        return f'{version}-{self.target}'
+        return f'{self.target}'
+
+
+# HCU: Modify to use compiler_hcu.py for HCU backend, will refine the code after new backend support.
+from .compiler_hcu import HIPBackend as HCUHIPBackend, HIPOptions as HCUHIPOptions
+HIPBackend = HCUHIPBackend
+HIPOptions = HCUHIPOptions
+del HCUHIPBackend
+del HCUHIPOptions

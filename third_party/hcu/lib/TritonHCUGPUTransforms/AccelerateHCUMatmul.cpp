@@ -28,7 +28,7 @@ using mlir::triton::HCU::HCUISAFeature;
 
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "tritonamd-accelerate-matmul"
+#define DEBUG_TYPE "tritonhcu-accelerate-matmul"
 
 namespace mlir {
 

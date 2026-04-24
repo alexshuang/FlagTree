@@ -48,9 +48,9 @@ class AttentionConfig:
 
         # operator layouts
         self.qk_layout = gl.constexpr(
-            gl.hcu.HCUWMMALayout(3, transposed=True, warps_per_cta=[4, 1], instr_shape=[16, 16, 32]))
+            gl.hcu.AMDWMMALayout(3, transposed=True, warps_per_cta=[4, 1], instr_shape=[16, 16, 32]))
         self.pv_layout = gl.constexpr(
-            gl.hcu.HCUWMMALayout(3, transposed=True, warps_per_cta=[4, 1], instr_shape=[16, 16, 32]))
+            gl.hcu.AMDWMMALayout(3, transposed=True, warps_per_cta=[4, 1], instr_shape=[16, 16, 32]))
 
         # tensor layouts
         self.k_smem_layout = gl.constexpr(

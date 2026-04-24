@@ -155,7 +155,7 @@ def persistent_gemm_tdm_pipelined_kernel(a_ptr, b_ptr, c_ptr,  #
     ttgl.static_assert(b_dtype.is_fp16() or b_dtype.is_bf16(), "Only fp16/bf16 supported for B")
     ttgl.static_assert(NUM_BUFFERS >= 2, "NUM_BUFFERS must be at least 2")
 
-    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.HCUWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
+    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.AMDWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
     shared_layouts: ttgl.constexpr = create_shared_layouts(BLOCK_M, BLOCK_N, BLOCK_K, TRANSPOSE_B)
     SHARED_LAYOUT_A: ttgl.constexpr = shared_layouts[0]
     SHARED_LAYOUT_B: ttgl.constexpr = shared_layouts[1]
@@ -217,7 +217,7 @@ def persistent_gemm_tdm_pipelined_lds_prefetch_kernel(a_ptr, b_ptr, c_ptr,  #
     ttgl.static_assert(b_dtype.is_fp16() or b_dtype.is_bf16(), "Only fp16/bf16 supported for B")
     ttgl.static_assert(NUM_BUFFERS >= 2, "NUM_BUFFERS must be at least 2")
 
-    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.HCUWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
+    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.AMDWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
     shared_layouts: ttgl.constexpr = create_shared_layouts(BLOCK_M, BLOCK_N, BLOCK_K, TRANSPOSE_B)
     SHARED_LAYOUT_A: ttgl.constexpr = shared_layouts[0]
     SHARED_LAYOUT_B: ttgl.constexpr = shared_layouts[1]
@@ -289,7 +289,7 @@ def gemm_tdm_pipelined_kernel(a_ptr, b_ptr, c_ptr,  #
     ttgl.static_assert(b_dtype.is_fp16() or b_dtype.is_bf16(), "Only fp16/bf16 supported for B")
     ttgl.static_assert(NUM_BUFFERS >= 2, "NUM_BUFFERS must be at least 2")
 
-    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.HCUWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
+    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.AMDWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
     shared_layouts: ttgl.constexpr = create_shared_layouts(BLOCK_M, BLOCK_N, BLOCK_K, TRANSPOSE_B)
     SHARED_LAYOUT_A: ttgl.constexpr = shared_layouts[0]
     SHARED_LAYOUT_B: ttgl.constexpr = shared_layouts[1]
@@ -350,7 +350,7 @@ def gemm_tdm_pipelined_single_warp_per_simd_schedule_kernel(a_ptr, b_ptr, c_ptr,
     SUBTILE_LEN: ttgl.constexpr = BLOCK_K // NUM_SUBTILES
     ttgl.static_assert(SUBTILE_LEN == 32, "Subtile length must match the kdim of the wmma instruction")
 
-    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.HCUWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
+    WMMA_LAYOUT: ttgl.constexpr = ttgl.hcu.AMDWMMALayout(3, True, [NUM_WARPS // 2, 2], [16, 16, 32])
     shared_layouts: ttgl.constexpr = create_shared_layouts(BLOCK_M, BLOCK_N, BLOCK_K, TRANSPOSE_B)
     SHARED_LAYOUT_A: ttgl.constexpr = shared_layouts[0]
     SHARED_LAYOUT_B: ttgl.constexpr = shared_layouts[1]

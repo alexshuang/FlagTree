@@ -163,7 +163,7 @@ class GlobalScaledAttentionConfig:
                                    BLOCK_N, NUM_WARPS, NUM_BUFFERS)
         self.base = base
 
-        wmma_layout: ttgl.constexpr = ttgl.hcu.HCUWMMALayout(  #
+        wmma_layout: ttgl.constexpr = ttgl.hcu.AMDWMMALayout(  #
             version=3, transposed=True, warps_per_cta=[NUM_WARPS, 1], instr_shape=[16, 16, 128])
         self.q_layout = ttgl.constexpr(ttgl.DotOperandLayout(0, wmma_layout, 16))
         self.k_smem_layout = ttgl.constexpr(get_padded_shared_layout(BLOCK_N, HEAD_SZ))
@@ -207,7 +207,7 @@ class BlockScaledAttentionConfig:
 
     @gluon.constexpr_function
     def get_acc_layout(tiles_per_warp, num_warps):
-        wmma_layout = ttgl.hcu.HCUWMMALayout(version=3,  #
+        wmma_layout = ttgl.hcu.AMDWMMALayout(version=3,  #
                                              transposed=True,  #
                                              warps_per_cta=[num_warps, 1],  #
                                              instr_shape=[16, 16, 128],  #

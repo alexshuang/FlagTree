@@ -143,18 +143,25 @@ class FastJITFunction(_JITFunction):
     saved_kernel_cache = None
     kernel_cache = {}
 
-    def get_key(self, bound_args):
-        key = []
-        if callable(self.key):
-            key = self.key(bound_args)
+    def get_key(self, *args, **kwargs):
+        if self.key:
+            nargs = dict(zip(self.arg_names, args))
+            bound_args = {**nargs, **kwargs}
+            if callable(self.key):
+                key = self.key(bound_args)
+            else:
+                key = []
+                for k in self.key:
+                    if k in bound_args:
+                        v = bound_args[k]
+                        if hasattr(v, "dtype"):
+                            key.append(str(v.dtype))
+                        else:
+                            key.append(v)
         else:
-            for k in self.key if self.key else self.arg_names:
-                if k in bound_args:
-                    v = bound_args[k]
-                    if hasattr(v, "dtype"):
-                        key.append(str(v.dtype))
-                    else:
-                        key.append(v)
+            _args = [str(v.dtype) if hasattr(v, "dtype") else v for v in args]
+            _kwargs = [str(v.dtype) if hasattr(v, "dtype") else v for v in kwargs.values()]
+            key = _args + _kwargs
         return str(tuple(key))
 
     def fallback(self, *args, grid, warmup, overwrite=False, **kwargs):
@@ -165,9 +172,7 @@ class FastJITFunction(_JITFunction):
         kernel_path = os.path.basename(os.path.dirname(str(asm_files[0])))
 
         # save signature:path to files in triton cache dir
-        nargs = dict(zip(self.arg_names, args))
-        all_args = {**nargs, **kwargs}
-        key = self.get_key(all_args)
+        key = self.get_key(*args, **kwargs)
         path_cache_dir = f"{get_triton_cache_dir()}/saved_kernel"
         os.makedirs(path_cache_dir, exist_ok=True)
         file_path = f"{path_cache_dir}/{self.saved_cache_key}.json"
@@ -210,7 +215,7 @@ class FastJITFunction(_JITFunction):
                 non_constexpr_vals.append(kwargs[name])
 
         # get kernel path
-        kernel_key = self.get_key(bound_args)
+        kernel_key = self.get_key(*args, **kwargs)
         if kernel_key not in self.saved_kernel_cache:
             logger.warning(f"{self.saved_cache_key}: Not found saved kernel {kernel_key} in cache, "
                            "fallback to triton.jit")

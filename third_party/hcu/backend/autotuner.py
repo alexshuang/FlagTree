@@ -553,6 +553,7 @@ def _get_weak_fn_hash(fn: triton.JITFunction):
     return dependencies_finder.ret
 
 
+import functools
 @functools.lru_cache()
 def get_triton_label():
     import importlib.metadata as md

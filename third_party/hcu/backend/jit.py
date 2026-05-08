@@ -118,12 +118,24 @@ def get_triton_label():
         return md.version("flagtree")
 
 
+def _get_weak_fn_hash(fn: triton.JITFunction):
+    # we are not a compiler, just an autotuner match, we don't need globals
+    from triton.runtime.jit import DependenciesFinder
+    if triton_version_float >= 3.5:
+        dependencies_finder = DependenciesFinder(name=fn.__name__, globals={}, src=fn.src, nonlocals={})
+    else:
+        dependencies_finder = DependenciesFinder(name=fn.__name__, globals={}, src=fn.src)
+    dependencies_finder.visit(fn.parse())
+    return dependencies_finder.ret
+
+
 def get_saved_kernel_cache_hash(fn):
     device_key = get_device_label()
     runtime_key = get_runtime_label()
     triton_key = get_triton_label()
+    code_key = _get_weak_fn_hash(fn)
     env_vars = get_cache_invalidating_env_vars()
-    key = f"{triton_key}-{fn.src}-{runtime_key}-{device_key}-{str(sorted(env_vars.items()))}"
+    key = f"{triton_key}-{code_key}-{runtime_key}-{device_key}-{str(sorted(env_vars.items()))}"
     return get_string_hash(key)[:12]
 
 
@@ -290,7 +302,7 @@ class FastJITFunction(_JITFunction):
 
             # launch kernel
             launch_metadata = kernel.launch_metadata(grid, stream, *non_constexpr_vals)
-            if triton_version_float >= 3.5:
+            if triton_version_float >= 3.3:
                 kernel.run(grid_0, grid_1, grid_2, stream, kernel.function, kernel.packed_metadata, launch_metadata,
                            knobs.runtime.launch_enter_hook, knobs.runtime.launch_exit_hook, *bound_args.values())
             else:

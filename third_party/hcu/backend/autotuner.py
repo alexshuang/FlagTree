@@ -553,16 +553,25 @@ def _get_weak_fn_hash(fn: triton.JITFunction):
     return dependencies_finder.ret
 
 
+@functools.lru_cache()
+def get_triton_label():
+    import importlib.metadata as md
+    try:
+        return md.version("triton")
+    except md.PackageNotFoundError:
+        return md.version("flagtree")
+
+
 def _get_cache_hash(fn, param_hash, key_hash, configs_hash):
     """
     Create a hash for locating the best config cache in the triton cache
     directory(~/.triton/cache by default). Where there is a config.json
     containing all the tuned best configs for a specified jit function.
 
-    hash format: src-autotune_params-key-configs
+    hash format: "triton_label-function-autotune_params-key-configs"
     Adapted from: triton/compiler/compiler.py:compile()
     """
-    key = f"{_get_weak_fn_hash(fn)}-{param_hash}-{key_hash}-{configs_hash}"
+    key = f"{get_triton_label()}-{_get_weak_fn_hash(fn)}-{param_hash}-{key_hash}-{configs_hash}"
     return get_string_hash(key)
 
 

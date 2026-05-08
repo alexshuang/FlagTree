@@ -190,7 +190,7 @@ class Hcutuner(Autotuner):
         ret = super().run(*args, **kwargs)
 
         # got new config
-        if hasattr(self, 'configs_timings') or len(self.configs) == 1:
+        if (hasattr(self, 'configs_timings') and self.configs_timings) or len(self.configs) == 1:
             _, key = get_config_key(self.arg_names, self.keys, *args, **kwargs)
 
             if hasattr(self, 'configs_timings'):
@@ -203,6 +203,8 @@ class Hcutuner(Autotuner):
 
             if os.getenv("TRITON_HCUTUNE_GRAPH_TRACE", "0") == "1":
                 self.save_graph_config(ret, *args, **kwargs)
+
+            self.configs_timings = None
 
         return ret
 

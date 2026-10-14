@@ -230,6 +230,7 @@ class HIPBackend(BaseBackend):
     def load_dialects(self, ctx):
         distributed.ir.load_dialects(ctx)
         hcu.load_dialects(ctx)
+        tle.load_dialects(ctx)
         if HIPBackend.instrumentation:
             HIPBackend.instrumentation.load_dialects(ctx)
 
@@ -406,6 +407,8 @@ class HIPBackend(BaseBackend):
         pm.enable_debug()
         passes.ttir.add_convert_to_ttgpuir(pm, f"hip:{options.arch}", options.num_warps, options.warp_size,
                                            options.num_ctas)
+        tle.raw_passes.add_tle_convert_arg_to_memdesc(pm)
+        tle.raw_passes.add_tle_remove_redundant_copy(pm)
         # flagtree tle: lower tle.extract_tile
         tle.passes.add_lower_extract_tile(pm)
         # flagtree tle: lower tle.insert_tile
@@ -535,6 +538,7 @@ class HIPBackend(BaseBackend):
     @staticmethod
     def make_llir(src, metadata, options):
         mod = src
+        kernel_name = mod.get_entry_func_name()
         # TritonGPU -> LLVM-IR (MLIR)
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
@@ -551,6 +555,7 @@ class HIPBackend(BaseBackend):
         passes.convert.add_index_to_llvmir(pm)
 
         hcu.passes.ttgpuir.add_allocate_shared_memory(pm)
+        tle.raw_passes.add_tle_dsl_region_inline(pm)
         # instrumentation point here so we can override IRs above (e.g., ttir and ttgir)
         if HIPBackend.instrumentation:
             HIPBackend.instrumentation.patch("ttgpuir_to_llvmir", pm, mod.context)
@@ -643,7 +648,8 @@ class HIPBackend(BaseBackend):
         total_num_warps = total_num_warps if total_num_warps is not None else options.num_warps
 
         # Set kernel attributes first given this may affect later optimizations.
-        fns = [fn for fn in llvm_mod.get_functions() if not fn.is_declaration()]
+        fns = [fn for fn in llvm_mod.get_functions() if not fn.is_declaration() and fn.name == kernel_name]
+
         # If wdra is enabled, this attribute is required by the LLVM backend.
         if options.wdra_enabled:
             fns[0].add_fn_attr("hcu-wdra-waves-per-tg", str(total_num_warps))

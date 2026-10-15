@@ -538,7 +538,6 @@ class HIPBackend(BaseBackend):
     @staticmethod
     def make_llir(src, metadata, options):
         mod = src
-        kernel_name = mod.get_entry_func_name()
         # TritonGPU -> LLVM-IR (MLIR)
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
@@ -556,6 +555,7 @@ class HIPBackend(BaseBackend):
 
         hcu.passes.ttgpuir.add_allocate_shared_memory(pm)
         tle.raw_passes.add_tle_dsl_region_inline(pm)
+        kernel_name = mod.get_entry_func_name()
         # instrumentation point here so we can override IRs above (e.g., ttir and ttgir)
         if HIPBackend.instrumentation:
             HIPBackend.instrumentation.patch("ttgpuir_to_llvmir", pm, mod.context)

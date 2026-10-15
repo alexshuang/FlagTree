@@ -6,6 +6,8 @@ from typing import Any, Final
 
 import os
 import re
+import sys
+import json
 import shlex
 import shutil
 import subprocess
@@ -229,36 +231,113 @@ def _get_clang_options(arch):
     return options_args
 
 
-_DEVICE_FUNCTION_PATTERN = re.compile(
-    r"""
-    \b__device__\b
-    (?:
-        (?![;{}])
-        .
-    )*?
-    \b
-    (?P<name>[A-Za-z_][A-Za-z0-9_]*)
-    \s*
-    \(
-    """,
-    re.MULTILINE | re.VERBOSE,
-)
+_AST_SCAN_MACROS: Final[list[str]] = [
+    "-D__device__=__attribute__((device))",
+    "-D__host__=__attribute__((host))",
+    "-D__global__=__attribute__((global))",
+    "-D__shared__=__attribute__((shared))",
+    "-D__constant__=__attribute__((constant))",
+    "-D__forceinline__=inline __attribute__((always_inline))",
+]
+
+_STDIN_NAMES: Final[frozenset[str]] = frozenset({"<stdin>", "-"})
 
 
-def _infer_device_function_name(
-    source: str,
-    source_file: str,
-) -> str:
-    names = [match.group("name") for match in _DEVICE_FUNCTION_PATTERN.finditer(source)]
+def _collect_device_functions(root: dict) -> list[str]:
+    """Return names of __device__ functions with a body, defined in stdin."""
+    # Clang's JSON dumper only emits "file" when it changes, so track it
+    # in document order to know which file each node belongs to.
+    state: dict[str, Any] = {"file": None}
+    found: list[str] = []
 
-    names = list(dict.fromkeys(names))
+    def track(loc: Any) -> None:
+        if not isinstance(loc, dict):
+            return
+        if "spellingLoc" in loc or "expansionLoc" in loc:
+            track(loc.get("spellingLoc"))
+            track(loc.get("expansionLoc"))
+        elif "file" in loc:
+            state["file"] = loc["file"]
+
+    def visit(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        track(node.get("loc"))
+        loc_file = state["file"]
+        rng = node.get("range") or {}
+        track(rng.get("begin"))
+        track(rng.get("end"))
+
+        inner = node.get("inner") or []
+        if (node.get("kind") == "FunctionDecl" and not node.get("isImplicit") and node.get("name")
+                and loc_file in _STDIN_NAMES):
+            kinds = {c.get("kind") for c in inner if isinstance(c, dict)}
+            if "CUDADeviceAttr" in kinds and "CompoundStmt" in kinds:
+                found.append(node["name"])
+
+        for child in inner:
+            visit(child)
+
+    old_limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(max(old_limit, 10000))
+    try:
+        visit(root)
+    finally:
+        sys.setrecursionlimit(old_limit)
+
+    return list(dict.fromkeys(found))
+
+
+def _infer_device_function_name(source: str, source_file: str) -> str:
+    clang = _resolve_clang()
+    arch = _resolve_arch()
+
+    command = [
+        str(clang),
+        "-x",
+        "hip",
+        "--offload-device-only",
+        f"--offload-arch={arch}",
+        "-nogpulib",
+        "-nogpuinc",
+        "-fsyntax-only",
+        "-Wno-everything",
+        "-ferror-limit=0",
+        *_AST_SCAN_MACROS,
+        "-Xclang",
+        "-ast-dump=json",
+        "-",
+    ]
+
+    result = subprocess.run(
+        command,
+        input=source.encode("utf-8"),
+        capture_output=True,
+        check=False,
+    )
+
+    stdout = result.stdout.decode("utf-8", errors="replace")
+    start = stdout.find("{")
+    if start < 0:
+        raise RuntimeError("TLE-Raw HCU AST scan produced no output\n"
+                           f"source: {source_file}\n"
+                           f"command: {shlex.join(command)}\n"
+                           f"stderr:\n{result.stderr.decode(errors='replace')}")
+
+    try:
+        root, _ = json.JSONDecoder().raw_decode(stdout[start:])
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("TLE-Raw HCU failed to parse Clang AST JSON\n"
+                           f"source: {source_file}") from exc
+
+    names = _collect_device_functions(root)
 
     if len(names) == 1:
         return names[0]
 
     if not names:
         raise RuntimeError("TLE-Raw HCU could not find a __device__ "
-                           f"function in {source_file}. "
+                           f"function with a body in {source_file}. "
                            "Specify extern_func_name= explicitly.")
 
     raise RuntimeError("TLE-Raw HCU found multiple __device__ "
@@ -419,6 +498,7 @@ class HCUJITFunction(RawJITFunction):
             # f"--rocm-path={root}",
             "-include",
             "hip/hip_runtime.h",
+            "-I/opt/dtk/cuda/include",
             "-",
             "-o",
             "-",
@@ -465,7 +545,7 @@ class HCUJITFunction(RawJITFunction):
         text, rewrites = _sanitize_clang_ir(text)
 
         # C++ findExternalLLVMFunc() 必须使用 LLVM symbol，
-        # 不能继续使用 source-level 的 VectorAdd。
+        # 不能继续使用 source-level 的 kernel function name。
         self.extern_func_name = lowered_func_name
 
         # Validate that FlagTree's embedded LLVM and MLIR LLVM importer can

@@ -11,20 +11,19 @@ import subprocess
 
 from triton._C.libtriton import hcu, llvm
 from triton._C.libtriton.tle.llvm import parse_llvm_ir
-from triton.experimental.tle.raw.runtime import RawJITFunction
 from triton.runtime.driver import driver
 from triton.backends.hcu.compiler import HIPBackend
+from triton.experimental.tle.raw.runtime import RawJITFunction
+from triton.experimental.tle.raw.source_store import register_source
 
 
-def _resolve_arch() -> str:
+def _offload_arch() -> str:
     target = driver.active.get_current_target()
-
     if target.backend != "hip":
         raise RuntimeError("TLE-Raw HCU requires a HIP-compatible target, "
                            f"got backend={target.backend!r}")
 
     arch = str(target.arch).split(":", 1)[0]
-
     if re.fullmatch(r"gfx[0-9a-f]+", arch, re.IGNORECASE) is None:
         raise RuntimeError(f"invalid HCU architecture {arch!r}; "
                            "expected gfx928/gfx936 or another gfx* name")
@@ -51,7 +50,7 @@ def _sanitize_clang_ir(text: str) -> tuple[str, list[str]]:
         if count:
             applied.append(f"dropped {count}x {attribute.strip()!r}")
 
-    # Do not import DTK LLVM's private per-function subtarget feature set.
+    # Do not import private per-function subtarget feature set.
     patterns = (
         (
             r'\s+"target-cpu"="[^"]*"',
@@ -143,7 +142,7 @@ def _collect_device_functions(root: dict) -> list[str]:
 
 def _infer_device_function_name(source: str, source_file: str) -> str:
     clang = HIPBackend.path_to_rocm_clang()
-    arch = _resolve_arch()
+    arch = _offload_arch()
 
     command = [
         str(clang),
@@ -292,24 +291,25 @@ def _extract_function_closure(
     return extracted
 
 
+def _clang_flags():
+    return [
+        "-fgpu-rdc",
+        "-nogpulib",
+        "-Wno-unused-command-line-argument",
+        "-include",
+        "hip/hip_runtime.h",
+        f"-I/{HIPBackend.path_to_rocm()}/cuda/include",
+    ]
+
+
 class HCUJITFunction(RawJITFunction):
     """Compile CUDA/HIP-compatible device source into an eager raw region."""
 
-    def __init__(
-        self,
-        fn: Any,
-        file: Path,
-        *args,
-        **kwargs,
-    ) -> None:
-        if kwargs.get("deferred", False):
-            raise NotImplementedError("deferred TLE-Raw HCU sources are not supported")
-
+    def __init__(self, fn: Any, file: Path, *args, **kwargs) -> None:
         super().__init__(fn, **kwargs)
 
-        source_file = Path(file)
-        self.code: Final[str] = source_file.read_text()
-        self.source_file: Final[str] = str(source_file)
+        self.code: Final[str] = file.read_text()
+        self.source_file: Final[str] = str(file)
 
         # The frontend decorator may say name=\"cuda\", but downstream IR must
         # describe the toolchain that actually compiled the source.
@@ -317,10 +317,7 @@ class HCUJITFunction(RawJITFunction):
         self.lowered_region_dialect: Final[str] = "llvm"
         self.arg_dialect: Final[str] = "llvm"
 
-        self.opt_level: Final[str] = kwargs.get(
-            "opt_level",
-            "-O3",
-        )
+        self.opt_level: Final[str] = kwargs.get("opt_level", "-O3")
 
         if self.library:
             raise RuntimeError(f"TLE-Raw HCU does not support "
@@ -334,7 +331,7 @@ class HCUJITFunction(RawJITFunction):
 
     def make_llvm(self, mlir_context) -> str:
         clang = HIPBackend.path_to_rocm_clang()
-        arch = _resolve_arch()
+        arch = _offload_arch()
 
         command = [
             str(clang),
@@ -342,18 +339,13 @@ class HCUJITFunction(RawJITFunction):
             "hip",
             "--offload-device-only",
             f"--offload-arch={arch}",
-            "-fgpu-rdc",
-            "-nogpulib",
             self.opt_level,
             "-emit-llvm",
             "-S",
-            "-Wno-unused-command-line-argument",
-            "-include",
-            "hip/hip_runtime.h",
-            f"-I/{HIPBackend.path_to_rocm()}/cuda/include",
             "-",
             "-o",
             "-",
+            *_clang_flags(),
         ]
 
         result = subprocess.run(
@@ -414,3 +406,55 @@ class HCUJITFunction(RawJITFunction):
                                f"LLVM IR:\n{mlir_module}") from exc
 
         return str(mlir_module)
+
+    def register_pending_source(self, *, hint: str = "") -> str:
+        if not self.extern_func_name:
+            raise RuntimeError("Deferred TLE-Raw HCU requires "
+                               "extern_func_name= to identify the device "
+                               "function in the HIP/CUDA source")
+
+        return register_source(
+            region_dialect=self.region_dialect,
+            extern_func_name=self.extern_func_name,
+            source=self.code,
+            hint=hint,
+            extra={
+                "source_file": self.source_file,
+                "opt_level": self.opt_level,
+            },
+        )
+
+    def create_region_deferred(
+        self,
+        builder,
+        source_id: str,
+        handles,
+        alias_indices,
+        hint: str = "",
+    ):
+        return builder.create_tle_raw_region_deferred(
+            source_id,
+            self.region_dialect,
+            self.arg_dialect,
+            handles,
+            alias_indices,
+            hint,
+        )
+
+
+def compile_deferred_pending_source(entry: dict, *, context) -> str:
+    source_text = entry["source"]
+
+    class _HCUSourceFile:
+
+        def read_text(self):
+            return source_text
+
+    hcu_fn = HCUJITFunction(
+        fn=None,
+        file=_HCUSourceFile(),
+        extern_func_name=entry.get("extern_func_name"),
+        deferred=True,
+        opt_level=entry.get("opt_level"),
+    )
+    return hcu_fn.make_llvm(context)

@@ -298,7 +298,7 @@ def _clang_flags():
         "-Wno-unused-command-line-argument",
         "-include",
         "hip/hip_runtime.h",
-        f"-I/{HIPBackend.path_to_rocm()}/cuda/include",
+        f"-I/{HIPBackend.path_to_rocm()}/cuda/cuda/include",
     ]
 
 

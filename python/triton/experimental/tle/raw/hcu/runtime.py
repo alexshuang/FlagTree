@@ -83,6 +83,23 @@ def _extract_target_triple(text: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _dushmem_include_flags() -> list[str]:
+    return [
+        "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
+        "-mcode-object-version=4",
+        "-I/opt/dtk/dushmem/include",
+    ]
+
+
+def _library_include_flags(library: str | None) -> list[str]:
+    if library in (None, ""):
+        return []
+    elif library == "dushmem":
+        return _dushmem_include_flags()
+    raise RuntimeError("TLE-Raw HCU supports only library=None or library='dushmem'; "
+                       f"got {library!r}")
+
+
 _AST_SCAN_MACROS: Final[list[str]] = [
     "-D__device__=__attribute__((device))",
     "-D__host__=__attribute__((host))",
@@ -291,15 +308,29 @@ def _extract_function_closure(
     return extracted
 
 
-def _clang_flags():
+def _clang_flags(library: str | None = None) -> list[str]:
     return [
         "-fgpu-rdc",
         "-nogpulib",
         "-Wno-unused-command-line-argument",
         "-include",
         "hip/hip_runtime.h",
-        f"-I/{HIPBackend.path_to_rocm()}/cuda/cuda/include",
+        f"-I{HIPBackend.path_to_rocm()}/cuda/cuda/include",
+        *_library_include_flags(library),
     ]
+
+
+def _register_dushmem_hook() -> None:
+    # Cache hits skip tracing, so the hook has to be registered at import.
+    from triton.experimental.tle.raw.cuda.runtime import register_kernel_init_hook
+    from triton.experimental.tle.raw.hcu.dushmem import (
+        DUSHMEM_CUMODULE_INIT_HOOK,
+        initialize_dushmem_cumodule,
+    )
+    try:
+        register_kernel_init_hook(DUSHMEM_CUMODULE_INIT_HOOK, initialize_dushmem_cumodule)
+    except RuntimeError:
+        pass
 
 
 class HCUJITFunction(RawJITFunction):
@@ -307,6 +338,10 @@ class HCUJITFunction(RawJITFunction):
 
     def __init__(self, fn: Any, file: Path, *args, **kwargs) -> None:
         super().__init__(fn, **kwargs)
+        # if self.library not in ("", "dushmem"):
+        #     raise RuntimeError(f"tle_raw library={self.library!r} is not supported on hcu")
+        # if self.library == "dushmem":
+        #     _register_dushmem_hook()
 
         self.code: Final[str] = file.read_text()
         self.source_file: Final[str] = str(file)
@@ -318,10 +353,6 @@ class HCUJITFunction(RawJITFunction):
         self.arg_dialect: Final[str] = "llvm"
 
         self.opt_level: Final[str] = kwargs.get("opt_level", "-O3")
-
-        if self.library:
-            raise RuntimeError(f"TLE-Raw HCU does not support "
-                               f"library={self.library!r}")
 
         if not self.extern_func_name:
             self.extern_func_name = (_infer_device_function_name(
@@ -345,7 +376,7 @@ class HCUJITFunction(RawJITFunction):
             "-",
             "-o",
             "-",
-            *_clang_flags(),
+            *_clang_flags(self.library),
         ]
 
         result = subprocess.run(
@@ -384,8 +415,11 @@ class HCUJITFunction(RawJITFunction):
             lowered_func_name,
         )
 
-        # Re-run normalization on the final closure
-        text, rewrites = _sanitize_clang_ir(text)
+        # Keep dushmem calls/global declarations unresolved here. Only this
+        # raw function closure crosses the LLVM -> MLIR import boundary.
+        # The device library is linked by HIPBackend.make_hsaco(), never here.
+        text, final_rewrites = _sanitize_clang_ir(text)
+        rewrites.extend(final_rewrites)
 
         # C++ findExternalLLVMFunc() 必须使用 LLVM symbol，
         # 不能继续使用 source-level 的 kernel function name。
@@ -403,9 +437,22 @@ class HCUJITFunction(RawJITFunction):
                                "MLIR LLVM dialect\n"
                                f"source: {self.source_file}\n"
                                f"rewrites: {applied}\n"
-                               f"LLVM IR:\n{mlir_module}") from exc
+                               f"LLVM IR:\n{text}") from exc
 
         return str(mlir_module)
+
+    def mark_kernel_init_hook(self, semantic, generator) -> None:
+        if self.library == "dushmem":
+            from triton.experimental.tle.raw.hcu.dushmem import DUSHMEM_CUMODULE_INIT_HOOK
+            _register_dushmem_hook()
+            operation = generator.module.get_operation()
+            hooks = operation.get_str_attr("tle.raw.kernel_init_hooks")
+            hook_names = set(hooks.split(",")) if hooks else set()
+            hook_names.add(DUSHMEM_CUMODULE_INIT_HOOK)
+            generator.module.set_attr(
+                "tle.raw.kernel_init_hooks",
+                semantic.builder.get_string_attr(",".join(sorted(hook_names))),
+            )
 
     def register_pending_source(self, *, hint: str = "") -> str:
         if not self.extern_func_name:
@@ -421,6 +468,7 @@ class HCUJITFunction(RawJITFunction):
             extra={
                 "source_file": self.source_file,
                 "opt_level": self.opt_level,
+                "library": self.library,
             },
         )
 
@@ -453,8 +501,13 @@ def compile_deferred_pending_source(entry: dict, *, context) -> str:
     hcu_fn = HCUJITFunction(
         fn=None,
         file=_HCUSourceFile(),
-        extern_func_name=entry.get("extern_func_name"),
+        extern_func_name=entry.get("extern_func_name", ""),
         deferred=True,
-        opt_level=entry.get("opt_level"),
+        opt_level=entry.get("opt_level", "-O3"),
+        library=entry.get("library", ""),
     )
-    return hcu_fn.make_llvm(context)
+
+    llvm_ir = hcu_fn.make_llvm(context)
+    # The materializer must find the lowered (possibly C++-mangled) symbol.
+    entry["extern_func_name"] = hcu_fn.extern_func_name
+    return llvm_ir

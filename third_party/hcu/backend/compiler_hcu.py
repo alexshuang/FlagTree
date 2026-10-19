@@ -30,6 +30,17 @@ def is_in_thread_transpose_enabled(arch):
     return (arch == "gfx942") if knobs.hcu.use_in_thread_transpose is None else knobs.hcu.use_in_thread_transpose
 
 
+_AMDGCN_TARGET_RE = re.compile(r'\.amdgcn_target\s+"amdgcn-amd-amdhsa-[^-"]*-(gfx[0-9a-z]+(?::[a-z0-9]+[+-])*)"')
+
+
+def _retarget_clang_args(clang_args, asm_text):
+    m = _AMDGCN_TARGET_RE.search(asm_text)
+    args = [a for a in clang_args if a != ""]
+    if not m:
+        return args
+    return [f"-mcpu={m.group(1)}" if str(a).startswith("-mcpu=") else a for a in args]
+
+
 @dataclass(frozen=True)
 class HIPOptions:
     num_warps: int = 4
@@ -386,6 +397,10 @@ class HIPBackend(BaseBackend):
 
     @staticmethod
     def make_ttir(mod, metadata, options):
+        # flagtree tle raw: dushmemx_cumodule_init runs after the hsaco is loaded.
+        kernel_init_hooks = mod.get_operation().get_str_attr("tle.raw.kernel_init_hooks")
+        metadata["kernel_init_hooks"] = kernel_init_hooks.split(",") if kernel_init_hooks else []
+
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
         passes.common.add_inliner(pm)
@@ -691,6 +706,12 @@ class HIPBackend(BaseBackend):
                 metadata['use_nvshmem'] = True
                 break
 
+        metadata['use_dushmem'] = False
+        for k in llvm_mod.get_functions():
+            if "dushmem" in k.name and k.is_declaration():
+                metadata['use_dushmem'] = True
+                break
+
         if knobs.compilation.enable_asan:
             default_libdir = Path(__file__).parent / 'lib'
             paths = [
@@ -732,6 +753,12 @@ class HIPBackend(BaseBackend):
         # Disable inlining of print related functions,
         # because inlining of these function could slow down compilation significantly
         hcu.disable_print_inline(llvm_mod)
+
+        # Fixme: link it before run llvm.optimize_module()
+        if metadata['use_dushmem']:
+            from triton.experimental.tle.raw.hcu.dushmem import link_dushmem_lib
+            llvm_mod = link_dushmem_lib(llvm_mod, options.arch)
+
         return str(llvm_mod)
 
     ## TODO: [HCU] integrate with rocshmem
@@ -805,6 +832,7 @@ class HIPBackend(BaseBackend):
 
             clang_path = HIPBackend.path_to_rocm_clang()
             clang_args = HIPBackend._get_clang_args(metadata, options)
+            clang_args = _retarget_clang_args(clang_args, str(src))
 
             # Compile to HSACO
             hsaco_command = [clang_path] + clang_args + [asm_file, "-x", "assembler", "-o", hsaco_file]

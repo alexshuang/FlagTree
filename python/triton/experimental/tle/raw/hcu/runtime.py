@@ -86,7 +86,11 @@ def _extract_target_triple(text: str) -> str | None:
 def _rocshmem_include_flags() -> list[str]:
     # Import lazily: utils.py also imports HIPBackend and host-side dependencies.
     from triton.experimental.tle.raw.hcu.utils import get_rocshmem_home
-    return [f"-I{get_rocshmem_home() / 'include'}"]
+    return [
+        f"-I{get_rocshmem_home() / 'include'}",
+        "-I/opt/mpi/include",
+        "-I/opt/ucx/include",
+    ]
 
 
 def _library_include_flags(library: str | None) -> list[str]:
@@ -358,6 +362,42 @@ def _clang_flags(library: str | None = None) -> list[str]:
     ]
 
 
+def _lower_read_register_exec(text):
+    _MD_DEF_RE = re.compile(r'^(![\w.]+)\s*=\s*!\{!"([^"]*)"\}\s*$', re.M)
+    _READ_REG_RE = re.compile(r'(?m)^(?P<lhs>\s*%[^\s=]+\s*=\s*)'
+                              r'(?:(?:tail|musttail|notail)\s+)?call\s+i64\s+'
+                              r'@llvm\.read_register\.i64\(metadata\s+(?P<md>![\w.]+)\)[^\n]*$')
+    _READ_REG_DECL_RE = re.compile(r'(?m)^declare\s+i64\s+@llvm\.read_register\.i64\(metadata\)[^\n]*\n')
+    _BALLOT_DECL = "declare i64 @llvm.amdgcn.ballot.i64(i1)"
+    _METADATA_ARG_RE = re.compile(r'(?m)^(?!declare\b)[^;\n]*\bcall\b[^\n]*\bmetadata\s+![\w.]+')
+
+    rewrites = []
+    md_names = {k: v for k, v in _MD_DEF_RE.findall(text)}
+    count = 0
+
+    def repl(m):
+        nonlocal count
+        reg = md_names.get(m.group("md"))
+        if reg != "exec":
+            raise RuntimeError(f"unsupported llvm.read_register({reg!r}); only 'exec' can be lowered")
+        count += 1
+        return f'{m.group("lhs")}call i64 @llvm.amdgcn.ballot.i64(i1 true)'
+
+    text = _READ_REG_RE.sub(repl, text)
+    if count:
+        rewrites.append(f"read_register(exec)->amdgcn.ballot x{count}")
+        text = _READ_REG_DECL_RE.sub("", text)
+        if "@llvm.amdgcn.ballot.i64(" in text and \
+           "declare i64 @llvm.amdgcn.ballot.i64" not in text:
+            text = text.rstrip("\n") + "\n" + _BALLOT_DECL + "\n"
+
+    leftover = _METADATA_ARG_RE.findall(text)
+    if leftover:
+        raise RuntimeError("LLVM IR still has call with metadata operand that MLIR ModuleImport "
+                           "cannot import:\n" + "\n".join(l.strip() for l in leftover[:10]))
+    return text, rewrites
+
+
 class HCUJITFunction(RawJITFunction):
     """Compile CUDA/HIP-compatible device source into an eager raw region."""
 
@@ -442,6 +482,9 @@ class HCUJITFunction(RawJITFunction):
             lowered_func_name,
         )
 
+        with open("/tmp/before_link_rocshmem.mlir", "w") as fp:
+            fp.write(text)
+
         # # Re-run normalization on the final closure
         # text, rewrites = _sanitize_clang_ir(text)
 
@@ -452,10 +495,18 @@ class HCUJITFunction(RawJITFunction):
                 lowered_func_name,
             )
 
+        with open("/tmp/after_link_rocshmem.mlir", "w") as fp:
+            fp.write(text)
+
         # Normalize the final closure too, because linked device bitcode can
         # carry the same attributes as Clang's source module.
         text, final_rewrites = _sanitize_clang_ir(text)
+        text, rr = _lower_read_register_exec(text)
+        final_rewrites.extend(rr)
         rewrites.extend(final_rewrites)
+
+        with open("/tmp/after_sanitize.mlir", "w") as fp:
+            fp.write(text)
 
         # C++ findExternalLLVMFunc() 必须使用 LLVM symbol，
         # 不能继续使用 source-level 的 kernel function name。

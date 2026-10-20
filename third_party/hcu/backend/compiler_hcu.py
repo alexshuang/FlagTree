@@ -126,6 +126,19 @@ class HIPOptions:
             extern_libs[lib] = str(default_libdir / f'{lib}.bc')
         # rocshmem_device_lib = str(default_libdir / 'librocshmem_device.bc')
 
+        # flagtree tle raw: librocshmem_device when @dialect(library="rocshmem") enabled in utils.
+        try:
+            from triton.experimental.tle.raw.hcu.utils import (
+                is_rocshmem_device_bc_enabled,
+                resolve_rocshmem_device_bitcode,
+            )
+            if is_rocshmem_device_bc_enabled():
+                rocshmem_bc = resolve_rocshmem_device_bitcode(arch=self.arch)
+                if rocshmem_bc is not None:
+                    extern_libs.update({"librocshmem_device": str(rocshmem_bc)})
+        except Exception:
+            pass
+
         object.__setattr__(self, 'extern_libs', tuple(extern_libs.items()))
         # object.__setattr__(self, 'rocshmem_device_lib', rocshmem_device_lib)
 
@@ -386,6 +399,8 @@ class HIPBackend(BaseBackend):
 
     @staticmethod
     def make_ttir(mod, metadata, options):
+        kernel_init_hooks = mod.get_operation().get_str_attr("tle.raw.kernel_init_hooks")
+        metadata["kernel_init_hooks"] = kernel_init_hooks.split(",") if kernel_init_hooks else []
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
         passes.common.add_inliner(pm)
@@ -537,6 +552,7 @@ class HIPBackend(BaseBackend):
 
     @staticmethod
     def make_llir(src, metadata, options):
+        print("### make_llir enter")
         mod = src
         # TritonGPU -> LLVM-IR (MLIR)
         pm = ir.pass_manager(mod.context)
@@ -555,7 +571,9 @@ class HIPBackend(BaseBackend):
 
         hcu.passes.ttgpuir.add_allocate_shared_memory(pm)
         from .deferred_raw import (deferred_raw_materialize, finish_deferred_raw_materialize)
+        print("## before deferred_raw_materialize()")
         deferred_raw_materialize(mod, pm)
+        print("## after deferred_raw_materialize()")
         tle.raw_passes.add_tle_dsl_region_inline(pm)
         kernel_name = mod.get_entry_func_name()
         # instrumentation point here so we can override IRs above (e.g., ttir and ttgir)
@@ -708,6 +726,10 @@ class HIPBackend(BaseBackend):
         if metadata['use_nvshmem']:
             default_libdir = Path(__file__).parent / 'lib'
             llvm.link_extern_libs(llvm_mod, [str(default_libdir / "libnvshmem_device.bc")])
+
+        if options.extern_libs:
+            paths = [path for (name, path) in options.extern_libs]
+            llvm.link_extern_libs(llvm_mod, paths)
 
         llvm.optimize_module(llvm_mod, llvm.OPTIMIZE_O3, options.arch, '', [], options.enable_fp_fusion)
 

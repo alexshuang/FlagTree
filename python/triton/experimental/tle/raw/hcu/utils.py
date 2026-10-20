@@ -26,8 +26,8 @@ import os
 import re
 import shlex
 import subprocess
-import sysconfig
 import tempfile
+import warnings
 from pathlib import Path
 
 import torch
@@ -81,11 +81,23 @@ def _library_dirs(home: Path) -> tuple[Path, ...]:
 def resolve_rocshmem_library(rocshmem_home: Path | None = None) -> Path:
     home = Path(rocshmem_home) if rocshmem_home is not None else get_rocshmem_home()
     for lib_dir in _library_dirs(home):
-        for name in ("librocshmem.so", "librocshmem.a"):
+        for name in ("librocshmem_host.so", "librocshmem.so"):
             path = lib_dir / name
             if path.is_file():
                 return path
-    raise RuntimeError(f"Cannot find librocshmem.so or librocshmem.a under {home}/lib{{,64}}")
+
+    for lib_dir in _library_dirs(home):
+        path = lib_dir / "librocshmem.a"
+        if path.is_file():
+            warnings.warn(
+                f"Only the static {path} was found. Each host wrapper .so will embed its own "
+                "rocSHMEM runtime, so rocshmem_init() in one wrapper is invisible to the others.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return path
+
+    raise RuntimeError(f"Cannot find librocshmem_host.so, librocshmem.so or librocshmem.a under {home}/lib{{,64}}")
 
 
 _rocshmem_device_bc_enabled: bool = False
@@ -140,7 +152,8 @@ def get_rocshmem_extern_libs(arch: str | int | None = None) -> dict[str, str]:
 
 @functools.lru_cache()
 def get_hipcc() -> tuple[str, str]:
-    executable = "hipcc" + (sysconfig.get_config_var("EXE") or "")
+    # executable = "hipcc" + (sysconfig.get_config_var("EXE") or "")
+    executable = "aicc"
     rocm_home = Path(os.environ.get("ROCM_PATH", HIPBackend.path_to_rocm()))
     candidates = (str(rocm_home / "bin" / executable), )
     for candidate in candidates:
@@ -196,10 +209,12 @@ def _compile_hip_host_to_cache(
         return Path(cached), host_cache_key, True
 
     # rocm_home = Path(os.environ.get("ROCM_PATH", os.environ.get("HIP_PATH", "/opt/rocm")))
-    rocm_home = HIPBackend.path_to_rocm()
+    rocm_home = Path(HIPBackend.path_to_rocm())
     include_flags = [f"-I{home / 'include'}"]
     if (rocm_home / "include").is_dir() and rocm_home != home:
         include_flags.append(f"-I{rocm_home / 'include'}")
+
+    include_flags.append("-I/opt/mpi/include")
 
     with tempfile.TemporaryDirectory(prefix="tle-rocshmem-host-") as temporary_dir:
         temporary_dir = Path(temporary_dir)
@@ -230,6 +245,8 @@ def _compile_hip_host_to_cache(
             str(rocshmem_library),
             f"-L{rocm_home / 'lib'}",
             f"-L{rocm_home / 'lib64'}",
+            f"-L{home / 'lib'}",
+            "-lrocshmem_device",
             "-lamdhip64",
             "-lhsa-runtime64",
             *_split_env_flags("ROCSHMEM_EXTRA_LDFLAGS"),
@@ -248,6 +265,26 @@ def _compile_hip_host_to_cache(
     return Path(cached_path), host_cache_key, False
 
 
+_COMMON_SIGNATURES = {
+    "rocshmem_unique_id_size": ([], ctypes.c_size_t),
+    "rocshmem_get_unique_id_bytes": ([ctypes.c_void_p, ctypes.c_size_t], ctypes.c_int),
+    "rocshmem_init_from_torch_distributed": (
+        [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
+        ctypes.c_int,
+    ),
+    "rocshmem_finalize_from_torch_distributed": ([], ctypes.c_int),
+    "tle_hip_stream_write_value64": (
+        [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint64],
+        ctypes.c_int,
+    ),
+    "tle_hip_memcpy_async": (
+        [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p],
+        ctypes.c_int,
+    ),
+    "tle_hip_error_string": ([ctypes.c_int], ctypes.c_char_p),
+}
+
+
 class HipHostLibrary:
 
     def __init__(self, library_path):
@@ -256,36 +293,13 @@ class HipHostLibrary:
         self._configure_signatures()
 
     def _configure_signatures(self):
-        lib = self.library
-        lib.rocshmem_unique_id_size.argtypes = []
-        lib.rocshmem_unique_id_size.restype = ctypes.c_size_t
-        lib.rocshmem_get_unique_id_bytes.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
-        lib.rocshmem_get_unique_id_bytes.restype = ctypes.c_int
-        lib.rocshmem_init_from_torch_distributed.argtypes = [
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_void_p,
-            ctypes.c_size_t,
-        ]
-        lib.rocshmem_init_from_torch_distributed.restype = ctypes.c_int
-        lib.rocshmem_finalize_from_torch_distributed.argtypes = []
-        lib.rocshmem_finalize_from_torch_distributed.restype = ctypes.c_int
-        lib.tle_hip_stream_write_value64.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_uint64,
-        ]
-        lib.tle_hip_stream_write_value64.restype = ctypes.c_int
-        lib.tle_hip_memcpy_async.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_size_t,
-            ctypes.c_void_p,
-        ]
-        lib.tle_hip_memcpy_async.restype = ctypes.c_int
-        lib.tle_hip_error_string.argtypes = [ctypes.c_int]
-        lib.tle_hip_error_string.restype = ctypes.c_char_p
+        for name, (argtypes, restype) in _COMMON_SIGNATURES.items():
+            try:
+                fn = getattr(self.library, name)
+            except AttributeError:
+                continue
+            fn.argtypes = argtypes
+            fn.restype = restype
 
     def __getattr__(self, name):
         return getattr(self.library, name)
@@ -358,6 +372,7 @@ def init_rocshmem_by_torch_pg(common, group):
     if result != 0:
         raise RuntimeError(f"rocSHMEM initialization failed: {result}")
     torch.distributed.barrier(group=group)
+    print(f"## rank {rank} run rocshmem_init_from_torch_distributed() done.")
 
 
 def finalize_rocshmem_by_torch_pg(common, group=None):

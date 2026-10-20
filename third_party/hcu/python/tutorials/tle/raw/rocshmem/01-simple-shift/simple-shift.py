@@ -32,9 +32,13 @@ def simple_shift(*args, **kwargs):
     ...
 
 
+print(f"{type(simple_shift)}, simple_shift.__class__.__mro__:")
+print(type(simple_shift), simple_shift.__class__.__mro__)
+
+
 @triton.jit
 def simple_shift_kernel(destination_ptr):
-    tle_raw.call(simple_shift, [destination_ptr])
+    tle_raw.call(simple_shift, [destination_ptr], output_indices=[0])
 
 
 def _configure_host_api(host_lib):
@@ -58,7 +62,7 @@ def _configure_host_api(host_lib):
     host_lib.simple_shift_after_launch.restype = ctypes.c_int
 
 
-def simple_shift():
+def main():
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     device = torch.device("cuda", local_rank)
 
@@ -120,4 +124,4 @@ def simple_shift():
 
 
 if __name__ == "__main__":
-    simple_shift()
+    main()

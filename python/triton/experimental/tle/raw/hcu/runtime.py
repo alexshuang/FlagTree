@@ -159,7 +159,7 @@ def _collect_device_functions(root: dict) -> list[str]:
     return list(dict.fromkeys(found))
 
 
-def _infer_device_function_name(source: str, source_file: str) -> str:
+def _infer_device_function_name(source: str, source_file: str, library: str | None = None) -> str:
     clang = HIPBackend.path_to_rocm_clang()
     arch = _offload_arch()
 
@@ -174,6 +174,7 @@ def _infer_device_function_name(source: str, source_file: str) -> str:
         "-fsyntax-only",
         "-Wno-everything",
         "-ferror-limit=0",
+        *_library_include_flags(library),
         *_AST_SCAN_MACROS,
         "-Xclang",
         "-ast-dump=json",
@@ -310,46 +311,6 @@ def _extract_function_closure(
     return extracted
 
 
-def _link_rocshmem_device_bitcode(llvm_ir: str, arch: str, root_symbol: str) -> str:
-    # Reuse the resolver in hcu/utils.py; do not duplicate installation policy.
-    from triton.experimental.tle.raw.hcu.utils import (
-        get_rocshmem_home,
-        resolve_rocshmem_device_bitcode,
-    )
-
-    bitcode = resolve_rocshmem_device_bitcode(arch=arch)
-    if bitcode is None:
-        raise RuntimeError(f"rocSHMEM device bitcode for arch={arch!r} was not found under "
-                           f"{get_rocshmem_home()}/lib{{,64}}")
-
-    llvm_link = _resolve_llvm_tool("llvm-link")
-    command = [
-        str(llvm_link),
-        "-S",
-        "-",
-        str(bitcode),
-        "-o",
-        "-",
-    ]
-    result = subprocess.run(
-        command,
-        input=llvm_ir.encode("utf-8"),
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError("TLE-Raw HCU failed to link rocSHMEM device bitcode\n"
-                           f"architecture: {arch}\n"
-                           f"bitcode: {bitcode}\n"
-                           f"command: {shlex.join(command)}\n"
-                           f"stderr:\n{result.stderr.decode(errors='replace')}")
-
-    linked = result.stdout.decode("utf-8", errors="strict")
-    # Keep the user function, its transitive rocSHMEM callees, and referenced
-    # device globals while avoiding import of unrelated rocSHMEM entry points.
-    return _extract_function_closure(linked, root_symbol)
-
-
 def _clang_flags(library: str | None = None) -> list[str]:
     return [
         "-fgpu-rdc",
@@ -357,45 +318,9 @@ def _clang_flags(library: str | None = None) -> list[str]:
         "-Wno-unused-command-line-argument",
         "-include",
         "hip/hip_runtime.h",
-        f"-I/{HIPBackend.path_to_rocm()}/cuda/cuda/include",
+        f"-I{HIPBackend.path_to_rocm()}/cuda/cuda/include",
         *_library_include_flags(library),
     ]
-
-
-def _lower_read_register_exec(text):
-    _MD_DEF_RE = re.compile(r'^(![\w.]+)\s*=\s*!\{!"([^"]*)"\}\s*$', re.M)
-    _READ_REG_RE = re.compile(r'(?m)^(?P<lhs>\s*%[^\s=]+\s*=\s*)'
-                              r'(?:(?:tail|musttail|notail)\s+)?call\s+i64\s+'
-                              r'@llvm\.read_register\.i64\(metadata\s+(?P<md>![\w.]+)\)[^\n]*$')
-    _READ_REG_DECL_RE = re.compile(r'(?m)^declare\s+i64\s+@llvm\.read_register\.i64\(metadata\)[^\n]*\n')
-    _BALLOT_DECL = "declare i64 @llvm.amdgcn.ballot.i64(i1)"
-    _METADATA_ARG_RE = re.compile(r'(?m)^(?!declare\b)[^;\n]*\bcall\b[^\n]*\bmetadata\s+![\w.]+')
-
-    rewrites = []
-    md_names = {k: v for k, v in _MD_DEF_RE.findall(text)}
-    count = 0
-
-    def repl(m):
-        nonlocal count
-        reg = md_names.get(m.group("md"))
-        if reg != "exec":
-            raise RuntimeError(f"unsupported llvm.read_register({reg!r}); only 'exec' can be lowered")
-        count += 1
-        return f'{m.group("lhs")}call i64 @llvm.amdgcn.ballot.i64(i1 true)'
-
-    text = _READ_REG_RE.sub(repl, text)
-    if count:
-        rewrites.append(f"read_register(exec)->amdgcn.ballot x{count}")
-        text = _READ_REG_DECL_RE.sub("", text)
-        if "@llvm.amdgcn.ballot.i64(" in text and \
-           "declare i64 @llvm.amdgcn.ballot.i64" not in text:
-            text = text.rstrip("\n") + "\n" + _BALLOT_DECL + "\n"
-
-    leftover = _METADATA_ARG_RE.findall(text)
-    if leftover:
-        raise RuntimeError("LLVM IR still has call with metadata operand that MLIR ModuleImport "
-                           "cannot import:\n" + "\n".join(l.strip() for l in leftover[:10]))
-    return text, rewrites
 
 
 class HCUJITFunction(RawJITFunction):
@@ -413,7 +338,7 @@ class HCUJITFunction(RawJITFunction):
         self.lowered_region_dialect: Final[str] = "llvm"
         self.arg_dialect: Final[str] = "llvm"
 
-        self.opt_level: Final[str] = kwargs.get("opt_level", "-O3")
+        self.opt_level: Final[str] = kwargs.get("opt_level") or "-O3"
 
         # if self.library:
         #     raise RuntimeError(f"TLE-Raw HCU does not support "
@@ -482,31 +407,11 @@ class HCUJITFunction(RawJITFunction):
             lowered_func_name,
         )
 
-        with open("/tmp/before_link_rocshmem.mlir", "w") as fp:
-            fp.write(text)
-
-        # # Re-run normalization on the final closure
-        # text, rewrites = _sanitize_clang_ir(text)
-
-        if self.library == "rocshmem":
-            text = _link_rocshmem_device_bitcode(
-                text,
-                arch,
-                lowered_func_name,
-            )
-
-        with open("/tmp/after_link_rocshmem.mlir", "w") as fp:
-            fp.write(text)
-
-        # Normalize the final closure too, because linked device bitcode can
-        # carry the same attributes as Clang's source module.
+        # Keep rocSHMEM calls/global declarations unresolved here. Only this
+        # raw function closure crosses the LLVM -> MLIR import boundary.
+        # The device library is linked by HIPBackend.make_hsaco(), never here.
         text, final_rewrites = _sanitize_clang_ir(text)
-        text, rr = _lower_read_register_exec(text)
-        final_rewrites.extend(rr)
         rewrites.extend(final_rewrites)
-
-        with open("/tmp/after_sanitize.mlir", "w") as fp:
-            fp.write(text)
 
         # C++ findExternalLLVMFunc() 必须使用 LLVM symbol，
         # 不能继续使用 source-level 的 kernel function name。
@@ -524,9 +429,24 @@ class HCUJITFunction(RawJITFunction):
                                "MLIR LLVM dialect\n"
                                f"source: {self.source_file}\n"
                                f"rewrites: {applied}\n"
-                               f"LLVM IR:\n{mlir_module}") from exc
+                               f"LLVM IR:\n{text}") from exc
 
         return str(mlir_module)
+
+    def mark_kernel_init_hook(self, semantic, generator) -> None:
+        parent_hook = getattr(super(), "mark_kernel_init_hook", None)
+        if parent_hook is not None:
+            parent_hook(semantic, generator)
+        if self.library != "rocshmem":
+            return
+        operation = generator.module.get_operation()
+        libraries = operation.get_str_attr("tle.raw.link_libraries")
+        names = {name for name in (libraries or "").split(",") if name}
+        names.add("rocshmem")
+        generator.module.set_attr(
+            "tle.raw.link_libraries",
+            semantic.builder.get_string_attr(",".join(sorted(names))),
+        )
 
     def register_pending_source(self, *, hint: str = "") -> str:
         if not self.extern_func_name:
@@ -580,4 +500,8 @@ def compile_deferred_pending_source(entry: dict, *, context) -> str:
         opt_level=entry.get("opt_level"),
         library=entry.get("library"),
     )
-    return hcu_fn.make_llvm(context)
+
+    llvm_ir = hcu_fn.make_llvm(context)
+    # The materializer must find the lowered (possibly C++-mangled) symbol.
+    entry["extern_func_name"] = hcu_fn.extern_func_name
+    return llvm_ir

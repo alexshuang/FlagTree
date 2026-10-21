@@ -372,7 +372,6 @@ def init_rocshmem_by_torch_pg(common, group):
     if result != 0:
         raise RuntimeError(f"rocSHMEM initialization failed: {result}")
     torch.distributed.barrier(group=group)
-    print(f"## rank {rank} run rocshmem_init_from_torch_distributed() done.")
 
 
 def finalize_rocshmem_by_torch_pg(common, group=None):

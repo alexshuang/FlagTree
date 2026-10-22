@@ -83,22 +83,20 @@ def _extract_target_triple(text: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _rocshmem_include_flags() -> list[str]:
+def _dushmem_include_flags() -> list[str]:
     # Import lazily: utils.py also imports HIPBackend and host-side dependencies.
-    from triton.experimental.tle.raw.hcu.utils import get_rocshmem_home
+    from triton.experimental.tle.raw.hcu.utils import get_dushmem_home
     return [
-        f"-I{get_rocshmem_home() / 'include'}",
-        "-I/opt/mpi/include",
-        "-I/opt/ucx/include",
+        f"-I{get_dushmem_home() / 'include'}",
     ]
 
 
 def _library_include_flags(library: str | None) -> list[str]:
     if library in (None, ""):
         return []
-    if library == "rocshmem":
-        return _rocshmem_include_flags()
-    raise RuntimeError("TLE-Raw HCU supports only library=None or library='rocshmem'; "
+    if library == "dushmem":
+        return _dushmem_include_flags()
+    raise RuntimeError("TLE-Raw HCU supports only library=None or library='dushmem'; "
                        f"got {library!r}")
 
 
@@ -159,7 +157,8 @@ def _collect_device_functions(root: dict) -> list[str]:
     return list(dict.fromkeys(found))
 
 
-def _infer_device_function_name(source: str, source_file: str, library: str | None = None) -> str:
+# def _infer_device_function_name(source: str, source_file: str, library: str | None = None) -> str:
+def _infer_device_function_name(source: str, source_file: str) -> str:
     clang = HIPBackend.path_to_rocm_clang()
     arch = _offload_arch()
 
@@ -174,7 +173,7 @@ def _infer_device_function_name(source: str, source_file: str, library: str | No
         "-fsyntax-only",
         "-Wno-everything",
         "-ferror-limit=0",
-        *_library_include_flags(library),
+        # *_library_include_flags(library),
         *_AST_SCAN_MACROS,
         "-Xclang",
         "-ast-dump=json",
@@ -319,7 +318,7 @@ def _clang_flags(library: str | None = None) -> list[str]:
         "-include",
         "hip/hip_runtime.h",
         f"-I{HIPBackend.path_to_rocm()}/cuda/cuda/include",
-        *_library_include_flags(library),
+        # *_library_include_flags(library),
     ]
 
 
@@ -343,14 +342,15 @@ class HCUJITFunction(RawJITFunction):
         # if self.library:
         #     raise RuntimeError(f"TLE-Raw HCU does not support "
         #                        f"library={self.library!r}")
-        _library_include_flags(self.library)
+        # _library_include_flags(self.library)
 
         if not self.extern_func_name:
-            self.extern_func_name = (_infer_device_function_name(
-                self.code,
-                self.source_file,
-                self.library,
-            ))
+            self.extern_func_name = (
+                _infer_device_function_name(
+                    self.code,
+                    self.source_file,
+                    # self.library,
+                ))
 
     def make_llvm(self, mlir_context) -> str:
         clang = HIPBackend.path_to_rocm_clang()
@@ -407,7 +407,7 @@ class HCUJITFunction(RawJITFunction):
             lowered_func_name,
         )
 
-        # Keep rocSHMEM calls/global declarations unresolved here. Only this
+        # Keep dushmem calls/global declarations unresolved here. Only this
         # raw function closure crosses the LLVM -> MLIR import boundary.
         # The device library is linked by HIPBackend.make_hsaco(), never here.
         text, final_rewrites = _sanitize_clang_ir(text)
@@ -433,20 +433,20 @@ class HCUJITFunction(RawJITFunction):
 
         return str(mlir_module)
 
-    def mark_kernel_init_hook(self, semantic, generator) -> None:
-        parent_hook = getattr(super(), "mark_kernel_init_hook", None)
-        if parent_hook is not None:
-            parent_hook(semantic, generator)
-        if self.library != "rocshmem":
-            return
-        operation = generator.module.get_operation()
-        libraries = operation.get_str_attr("tle.raw.link_libraries")
-        names = {name for name in (libraries or "").split(",") if name}
-        names.add("rocshmem")
-        generator.module.set_attr(
-            "tle.raw.link_libraries",
-            semantic.builder.get_string_attr(",".join(sorted(names))),
-        )
+    # def mark_kernel_init_hook(self, semantic, generator) -> None:
+    #     parent_hook = getattr(super(), "mark_kernel_init_hook", None)
+    #     if parent_hook is not None:
+    #         parent_hook(semantic, generator)
+    #     if self.library != "dushmem":
+    #         return
+    #     operation = generator.module.get_operation()
+    #     libraries = operation.get_str_attr("tle.raw.link_libraries")
+    #     names = {name for name in (libraries or "").split(",") if name}
+    #     names.add("dushmem")
+    #     generator.module.set_attr(
+    #         "tle.raw.link_libraries",
+    #         semantic.builder.get_string_attr(",".join(sorted(names))),
+    #     )
 
     def register_pending_source(self, *, hint: str = "") -> str:
         if not self.extern_func_name:

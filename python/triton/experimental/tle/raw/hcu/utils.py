@@ -1,4 +1,4 @@
-# Copyright 2026      Hygon Contributors
+# Copyright 2026-     Hygon Contributors
 # Copyright 2025-     FlagOS Contributors
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,7 +27,6 @@ import re
 import shlex
 import subprocess
 import tempfile
-import warnings
 from pathlib import Path
 
 import torch
@@ -36,40 +35,27 @@ from triton.runtime.cache import get_cache_manager
 from triton.runtime.driver import driver
 from triton.backends.hcu.compiler import HIPBackend
 
+DUSHMEM_CUMODULE_INIT_HOOK = "dushmem_cumodule_init"
+
+_cumodule_init = None
+
+_dushmem_device_bc_enabled: bool = False
+
 
 @functools.lru_cache()
-def get_rocshmem_home() -> Path:
-    candidates = [
-        os.environ.get("ROCSHMEM_HOME"),
-        os.environ.get("ROCSHMEM_INSTALL_DIR"),
-    ]
+def get_dushmem_home() -> Path:
+    path = Path(os.environ.get("DUSHMEM_HOME", "/opt/dtk/dushmem"))
+    if path:
+        if path.is_dir():
+            return path
+
+    raise RuntimeError("Cannot resolve libdushmem* under /opt/dtk/dushmem/lib. Set DUSHMEM_HOME "
+                       "to the dushmem installation prefix.")
+
+
+def try_get_dushmem_home() -> Path | None:
     try:
-        from triton import knobs
-        _knobs = getattr(knobs, "hcu", None)
-        if _knobs:
-            value = getattr(_knobs, "rocshmem_home", None)
-            if value:
-                candidates.insert(0, value)
-    except (AttributeError, ImportError):
-        pass
-
-    candidates.extend(["/opt/rocshmem"])
-    for candidate in candidates:
-        if not candidate:
-            continue
-        home = Path(candidate).expanduser().resolve()
-        if any((home / include).is_file() for include in (
-                "include/rocshmem/rocshmem.hpp",
-                "include/rocshmem.hpp",
-        )):
-            return home
-    raise RuntimeError("Cannot resolve ROCSHMEM_HOME. Set ROCSHMEM_HOME or "
-                       "ROCSHMEM_INSTALL_DIR to the rocSHMEM installation prefix.")
-
-
-def try_get_rocshmem_home() -> Path | None:
-    try:
-        return get_rocshmem_home()
+        return get_dushmem_home()
     except RuntimeError:
         return None
 
@@ -78,38 +64,24 @@ def _library_dirs(home: Path) -> tuple[Path, ...]:
     return tuple(path for path in (home / "lib", home / "lib64") if path.is_dir())
 
 
-def resolve_rocshmem_library(rocshmem_home: Path | None = None) -> Path:
-    home = Path(rocshmem_home) if rocshmem_home is not None else get_rocshmem_home()
+def resolve_dushmem_host_library(dushmem_home: Path | None = None) -> Path:
+    home = Path(dushmem_home) if dushmem_home is not None else get_dushmem_home()
     for lib_dir in _library_dirs(home):
-        for name in ("librocshmem_host.so", "librocshmem.so"):
+        for name in ("libdushmem_host.so", "libdushmem.so"):
             path = lib_dir / name
             if path.is_file():
                 return path
 
-    for lib_dir in _library_dirs(home):
-        path = lib_dir / "librocshmem.a"
-        if path.is_file():
-            warnings.warn(
-                f"Only the static {path} was found. Each host wrapper .so will embed its own "
-                "rocSHMEM runtime, so rocshmem_init() in one wrapper is invisible to the others.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            return path
-
-    raise RuntimeError(f"Cannot find librocshmem_host.so, librocshmem.so or librocshmem.a under {home}/lib{{,64}}")
+    raise RuntimeError(f"Cannot find libdushmem_host.so under {home}/lib{{,64}}")
 
 
-_rocshmem_device_bc_enabled: bool = False
+def enable_dushmem_device_bc(enabled: bool = True) -> None:
+    global _dushmem_device_bc_enabled
+    _dushmem_device_bc_enabled = bool(enabled)
 
 
-def enable_rocshmem_device_bc(enabled: bool = True) -> None:
-    global _rocshmem_device_bc_enabled
-    _rocshmem_device_bc_enabled = bool(enabled)
-
-
-def is_rocshmem_device_bc_enabled() -> bool:
-    return _rocshmem_device_bc_enabled
+def is_dushmem_device_bc_enabled() -> bool:
+    return _dushmem_device_bc_enabled
 
 
 def _normalize_arch(arch: str | int | None) -> str | None:
@@ -120,52 +92,116 @@ def _normalize_arch(arch: str | int | None) -> str | None:
     return match.group(0) if match else value
 
 
-def resolve_rocshmem_device_bitcode(
-    rocshmem_home: Path | None = None,
-    arch: str | int | None = None,
-) -> Path | None:
-    home = Path(rocshmem_home) if rocshmem_home is not None else try_get_rocshmem_home()
-    if home is None:
-        return None
-    normalized_arch = _normalize_arch(arch)
-    names = []
-    if normalized_arch:
-        names.append(f"librocshmem_device_{normalized_arch}.bc")
-    names.append("librocshmem_device.bc")
-    for lib_dir in _library_dirs(home):
-        for name in names:
-            path = lib_dir / name
-            if path.is_file():
-                return path
-    return None
+def resolve_dushmem_device_bitcode(arch: str) -> Path:
+    """Unbundle the device archive for ``arch`` and link the pieces Triton needs.
+
+    ``init_device`` defines ``dushmemi_device_state_d``. ``transfer_device``
+    defines the non-inline ``dushmemi_transfer_rma_p`` / ``quiet`` bodies that
+    ``dushmem_int_p`` calls when ``DUSHMEM_ENABLE_ALL_DEVICE_INLINING`` is off.
+    """
+    archive = get_dushmem_home() / "libdushmem_device.a"
+    if not archive.is_file():
+        raise RuntimeError(f"Cannot find {archive}")
+    stamp = archive.stat().st_mtime_ns
+    cached = Path(tempfile.gettempdir()) / f"dushmem-device-slim2-{arch}-{stamp}.bc"
+    if cached.is_file():
+        return cached
+    clang_dir = HIPBackend.path_to_rocm_llvm() / "bin"
+    bundler = clang_dir / "clang-offload-bundler"
+    llvm_ar = clang_dir / "llvm-ar"
+    llvm_link = clang_dir / "llvm-link"
+    members = ("init_device.cu.o", "transfer_device.cu.o")
+    # simple_shift only needs the int put and the quiet helpers the header emits.
+    # The rest of transfer_device is every collective; feeding that to dcc
+    # produces an assembler error and a multi-minute compile.
+    needed = (
+        "_Z23dushmemi_transfer_rma_pIiEvPvT_i",
+        "_Z23dushmemi_transfer_quietIL13threadgroup_t0EEvb",
+        "_Z23dushmemi_transfer_quietIL13threadgroup_t1EEvb",
+        "_Z23dushmemi_transfer_quietIL13threadgroup_t2EEvb",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        extract = subprocess.run([str(llvm_ar), "x", str(archive), *members], cwd=tmp, capture_output=True, text=True)
+        if extract.returncode != 0:
+            raise RuntimeError(f"llvm-ar failed to extract {members} from {archive}:\n{extract.stderr}")
+        bitcodes: list[str] = []
+        for member_name in members:
+            member = Path(tmp) / member_name
+            extracted = Path(tmp) / f"{member_name}.bc"
+            unbundle = subprocess.run(
+                [
+                    str(bundler),
+                    "-type=o",
+                    f"-targets=hip-amdgcn-amd-amdhsa--{arch}",
+                    f"-input={member}",
+                    f"-output={extracted}",
+                    "-unbundle",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if unbundle.returncode != 0:
+                raise RuntimeError(f"clang-offload-bundler failed for {member_name} ({arch}):\n{unbundle.stderr}")
+            bitcodes.append(str(extracted))
+        init_bc, transfer_bc = bitcodes
+        slim = Path(tmp) / "transfer-slim.bc"
+        slim_cmd = [str(clang_dir / "llvm-extract"), "--recursive", "-o", str(slim)]
+        for func in needed:
+            slim_cmd.append(f"--func={func}")
+        # llvm-extract leaves string constants used by the put body as
+        # declarations. Pull the one this gfx936 build references.
+        slim_cmd.append("--glob=.str.3")
+        slim_cmd.append(transfer_bc)
+        extracted_funcs = subprocess.run(slim_cmd, capture_output=True, text=True)
+        if extracted_funcs.returncode != 0:
+            raise RuntimeError(f"llvm-extract failed:\n{extracted_funcs.stderr}")
+        linked = Path(tmp) / "dushmem-device.bc"
+        link = subprocess.run([str(llvm_link), init_bc, str(slim), "-o", str(linked)], capture_output=True, text=True)
+        if link.returncode != 0:
+            raise RuntimeError(f"llvm-link failed for DUSHMEM device bitcode:\n{link.stderr}")
+        cached.write_bytes(linked.read_bytes())
+    return cached
 
 
-def get_rocshmem_extern_libs(arch: str | int | None = None) -> dict[str, str]:
-    if not is_rocshmem_device_bc_enabled():
+# def resolve_dushmem_device_bitcode(
+#     dushmem_home: Path | None = None,
+#     arch: str | int | None = None,
+# ) -> Path | None:
+#     home = Path(dushmem_home) if dushmem_home is not None else try_get_dushmem_home()
+#     if home is None:
+#         return None
+#     normalized_arch = _normalize_arch(arch)
+#     names = []
+#     if normalized_arch:
+#         names.append(f"libdushmem_device_{normalized_arch}.bc")
+#     names.append("libdushmem_device.bc")
+#     for lib_dir in _library_dirs(home):
+#         for name in names:
+#             path = lib_dir / name
+#             if path.is_file():
+#                 return path
+#     return None
+
+
+def get_dushmem_extern_libs(arch: str | int | None = None) -> dict[str, str]:
+    if not is_dushmem_device_bc_enabled():
         return {}
-    bitcode = resolve_rocshmem_device_bitcode(arch=arch)
+    bitcode = resolve_dushmem_device_bitcode(arch=arch)
     if bitcode is None:
-        raise RuntimeError(f"rocSHMEM device bitcode for arch={arch!r} was requested but not found under "
-                           f"{get_rocshmem_home()}/lib{{,64}}")
-    return {"librocshmem_device": str(bitcode)}
+        raise RuntimeError(f"dushmem device bitcode for arch={arch!r} was requested but not found under "
+                           f"{get_dushmem_home()}/lib{{,64}}")
+    return {"libdushmem_device": str(bitcode)}
 
 
 @functools.lru_cache()
 def get_hipcc() -> tuple[str, str]:
-    # executable = "hipcc" + (sysconfig.get_config_var("EXE") or "")
-    executable = "aicc"
-    rocm_home = Path(os.environ.get("ROCM_PATH", HIPBackend.path_to_rocm()))
-    candidates = (str(rocm_home / "bin" / executable), )
-    for candidate in candidates:
-        if not candidate:
-            continue
-        path = Path(candidate).expanduser()
-        if not path.is_file():
-            continue
-        output = subprocess.check_output([str(path), "--version"], stderr=subprocess.STDOUT, text=True)
+    rocm_home = HIPBackend.path_to_rocm()
+    aicc = str(rocm_home / "bin" / "aicc")
+    if aicc.is_file():
+        output = subprocess.check_output([aicc, "--version"], stderr=subprocess.STDOUT, text=True)
         match = re.search(r"(?:HIP version|clang version)\s*:?\s*([0-9]+(?:\.[0-9]+)+)", output)
-        return str(path), match.group(1) if match else "unknown"
-    raise RuntimeError("Cannot find hipcc. Set ROCM_PATH, or install it under $ROCM_PATH/bin.")
+        return aicc, match.group(1) if match else "unknown"
+    raise RuntimeError(f"Cannot find {aicc}")
 
 
 def _offload_arch() -> str:
@@ -186,21 +222,39 @@ def _split_env_flags(name: str) -> list[str]:
     return shlex.split(os.environ.get(name, ""))
 
 
+def _get_cumodule_init():
+    global _cumodule_init
+    if _cumodule_init is not None:
+        return _cumodule_init
+    library = ctypes.CDLL(str(resolve_dushmem_host_library()))
+    fn = library.dushmemx_cumodule_init
+    fn.argtypes = [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    _cumodule_init = fn
+    return fn
+
+
+def initialize_dushmem_cumodule(kernel) -> None:
+    kernel._init_handles()
+    result = _get_cumodule_init()(ctypes.c_void_p(kernel.module))
+    if result != 0:
+        raise RuntimeError(f"dushmemx_cumodule_init failed: {result}")
+
+
 def _compile_hip_host_to_cache(
     source,
-    rocshmem_home=None,
+    dushmem_home=None,
     arch: str = None,
     force: bool = False,
 ) -> tuple[Path, str, bool]:
     source_path = Path(source).expanduser().resolve()
-    # arch = _normalize_arch(arch) if arch else _get_amdgpu_arch()
     arch = _offload_arch()
-    home = Path(rocshmem_home).expanduser().resolve() if rocshmem_home else get_rocshmem_home()
-    rocshmem_library = resolve_rocshmem_library(home)
+    home = Path(dushmem_home).expanduser().resolve() if dushmem_home else get_dushmem_home()
+    dushmem_library = resolve_dushmem_host_library(home)
     hipcc, hip_version = get_hipcc()
 
-    fingerprint = (f"{arch}-hip{hip_version}-rocshmem-"
-                   f"{rocshmem_library.stat().st_size}-{rocshmem_library.stat().st_mtime_ns}")
+    fingerprint = (f"{arch}-hip{hip_version}-dushmem-"
+                   f"{dushmem_library.stat().st_size}-{dushmem_library.stat().st_mtime_ns}")
     host_cache_key = compute_tle_raw_host_cache_key(source_path, fingerprint)
     output_name = source_path.with_suffix(".so").name
     cache = get_cache_manager(host_cache_key)
@@ -208,71 +262,50 @@ def _compile_hip_host_to_cache(
     if cached is not None:
         return Path(cached), host_cache_key, True
 
-    # rocm_home = Path(os.environ.get("ROCM_PATH", os.environ.get("HIP_PATH", "/opt/rocm")))
-    rocm_home = Path(HIPBackend.path_to_rocm())
-    include_flags = [f"-I{home / 'include'}"]
-    if (rocm_home / "include").is_dir() and rocm_home != home:
-        include_flags.append(f"-I{rocm_home / 'include'}")
+    # rocm_home = Path(HIPBackend.path_to_rocm())
+    # include_flags = [f"-I{home / 'include'}"]
+    # if (rocm_home / "include").is_dir() and rocm_home != home:
+    #     include_flags.append(f"-I{rocm_home / 'include'}")
 
-    include_flags.append("-I/opt/mpi/include")
+    # include_flags.append("-I/opt/mpi/include")
 
-    with tempfile.TemporaryDirectory(prefix="tle-rocshmem-host-") as temporary_dir:
+    with tempfile.TemporaryDirectory(prefix="tle-dushmem-host-") as temporary_dir:
         temporary_dir = Path(temporary_dir)
-        object_path = temporary_dir / f"{source_path.stem}.o"
         shared_path = temporary_dir / output_name
-        compile_command = [
+        command = [
             hipcc,
-            "-c",
-            "-x",
-            "hip",
-            "-O2",
+            "-shared",
             "-fPIC",
             "-fgpu-rdc",
             f"--offload-arch={arch}",
-            *include_flags,
-            *_split_env_flags("ROCSHMEM_EXTRA_CXXFLAGS"),
-            "-o",
-            str(object_path),
-            str(source_path),
-        ]
-        link_command = [
-            hipcc,
-            "-shared",
-            "-fgpu-rdc",
-            "--hip-link",
-            f"--offload-arch={arch}",
-            str(object_path),
-            str(rocshmem_library),
-            f"-L{rocm_home / 'lib'}",
-            f"-L{rocm_home / 'lib64'}",
-            f"-L{home / 'lib'}",
-            "-lrocshmem_device",
-            "-lamdhip64",
-            "-lhsa-runtime64",
-            *_split_env_flags("ROCSHMEM_EXTRA_LDFLAGS"),
-            f"-Wl,-rpath,{rocshmem_library.parent}",
+            "-O3",
+            "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
+            "-mcode-object-version=4",
+            "-I/opt/dtk/include",
+            "-I/opt/dtk/include/dushmem",
+            "-L/opt/dtk/lib/dushmem",
+            str(source),
             "-o",
             str(shared_path),
         ]
-        for phase, command in (("compile", compile_command), ("link", link_command)):
-            result = subprocess.run(command, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise RuntimeError(f"hipcc failed during rocSHMEM host-wrapper {phase}\n"
-                                   f"command: {shlex.join(command)}\n"
-                                   f"stdout:\n{result.stdout}\n"
-                                   f"stderr:\n{result.stderr}")
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"hipcc failed during dushmem host-wrapper\n"
+                               f"command: {shlex.join(command)}\n"
+                               f"stdout:\n{result.stdout}\n"
+                               f"stderr:\n{result.stderr}")
         cached_path = cache.put(shared_path.read_bytes(), output_name, binary=True)
     return Path(cached_path), host_cache_key, False
 
 
 _COMMON_SIGNATURES = {
-    "rocshmem_unique_id_size": ([], ctypes.c_size_t),
-    "rocshmem_get_unique_id_bytes": ([ctypes.c_void_p, ctypes.c_size_t], ctypes.c_int),
-    "rocshmem_init_from_torch_distributed": (
+    "dushmem_unique_id_size": ([], ctypes.c_size_t),
+    "dushmem_get_unique_id_bytes": ([ctypes.c_void_p, ctypes.c_size_t], ctypes.c_int),
+    "dushmem_init_from_torch_distributed": (
         [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
         ctypes.c_int,
     ),
-    "rocshmem_finalize_from_torch_distributed": ([], ctypes.c_int),
+    "dushmem_finalize_from_torch_distributed": ([], ctypes.c_int),
     "tle_hip_stream_write_value64": (
         [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint64],
         ctypes.c_int,
@@ -305,21 +338,17 @@ class HipHostLibrary:
         return getattr(self.library, name)
 
 
-# Compatibility alias for callers that only use the wrapper protocol.
-CudaHostLibrary = HipHostLibrary
-
-
 def get_common_host_source() -> Path:
     return Path(__file__).resolve().parent / "common-host.hip"
 
 
-def load_host(source, rocshmem_home=None, arch=None, force: bool = False) -> HipHostLibrary:
-    path, _, _ = _compile_hip_host_to_cache(source, rocshmem_home, arch, force=force)
+def load_host(source, dushmem_home=None, arch=None, force: bool = False) -> HipHostLibrary:
+    path, _, _ = _compile_hip_host_to_cache(source, dushmem_home, arch, force=force)
     return HipHostLibrary(path)
 
 
-def load_common_host(source=None, rocshmem_home=None, arch=None, force: bool = False) -> HipHostLibrary:
-    return load_host(source or get_common_host_source(), rocshmem_home, arch, force)
+def load_common_host(source=None, dushmem_home=None, arch=None, force: bool = False) -> HipHostLibrary:
+    return load_host(source or get_common_host_source(), dushmem_home, arch, force)
 
 
 def init_torch_distributed():
@@ -339,18 +368,18 @@ def init_torch_distributed():
     return group
 
 
-def init_rocshmem_by_torch_pg(common, group):
+def init_dushmem_by_torch_pg(common, group):
     rank = group.rank()
     world_size = group.size()
-    uid_size = int(common.rocshmem_unique_id_size())
+    uid_size = int(common.dushmem_unique_id_size())
     if uid_size <= 0:
-        raise RuntimeError(f"Invalid rocSHMEM unique-id size: {uid_size}")
+        raise RuntimeError(f"Invalid dushmem unique-id size: {uid_size}")
 
     if rank == 0:
         temporary_buffer = ctypes.create_string_buffer(uid_size)
-        result = common.rocshmem_get_unique_id_bytes(temporary_buffer, uid_size)
+        result = common.dushmem_get_unique_id_bytes(temporary_buffer, uid_size)
         if result != 0:
-            raise RuntimeError(f"rocshmem_get_uniqueid failed: {result}")
+            raise RuntimeError(f"dushmem_get_uniqueid failed: {result}")
         uid = bytes(temporary_buffer.raw)
     else:
         uid = bytes(uid_size)
@@ -362,7 +391,7 @@ def init_rocshmem_by_torch_pg(common, group):
         group=group,
     )
     uid_buffer = ctypes.create_string_buffer(objects[0], uid_size)
-    result = common.rocshmem_init_from_torch_distributed(
+    result = common.dushmem_init_from_torch_distributed(
         rank,
         world_size,
         int(os.environ["LOCAL_RANK"]),
@@ -370,28 +399,16 @@ def init_rocshmem_by_torch_pg(common, group):
         uid_size,
     )
     if result != 0:
-        raise RuntimeError(f"rocSHMEM initialization failed: {result}")
+        raise RuntimeError(f"dushmem initialization failed: {result}")
     torch.distributed.barrier(group=group)
 
 
-def finalize_rocshmem_by_torch_pg(common, group=None):
+def finalize_dushmem_by_torch_pg(common, group=None):
     if group is not None:
         torch.distributed.barrier(group=group)
-    result = common.rocshmem_finalize_from_torch_distributed()
+    result = common.dushmem_finalize_from_torch_distributed()
     if result != 0:
-        raise RuntimeError(f"rocSHMEM finalization failed: {result}")
-
-
-# Source-compatible aliases for existing NVSHMEM tutorial Python code.
-get_nvshmem_home = get_rocshmem_home
-try_get_nvshmem_home = try_get_rocshmem_home
-resolve_nvshmem_host_library = resolve_rocshmem_library
-enable_nvshmem_device_bc = enable_rocshmem_device_bc
-is_nvshmem_device_bc_enabled = is_rocshmem_device_bc_enabled
-resolve_nvshmem_device_bitcode = resolve_rocshmem_device_bitcode
-get_nvshmem_extern_libs = get_rocshmem_extern_libs
-init_nvshmem_by_torch_pg = init_rocshmem_by_torch_pg
-finalize_nvshmem_by_torch_pg = finalize_rocshmem_by_torch_pg
+        raise RuntimeError(f"dushmem finalization failed: {result}")
 
 
 def tensor_from_pointer(
@@ -457,10 +474,6 @@ def copy_on_stream(dst_ptr, src_ptr, nbytes, stream):
     _hip_check(common, result, "hipMemcpyAsync")
 
 
-# Keep the old function name for callers shared with the CUDA implementation.
-set_signal_cuda_ptr = set_signal_hip_ptr
-
-
 def print_perf(
     name: str,
     value: float,
@@ -493,3 +506,20 @@ def print_perf_mean(
     mean_value = (value_tensor / world_size).item()
     if rank == 0:
         print(f"{name} mean: {mean_value:.3f} {unit}", flush=True)
+
+
+# Keep the old function name for callers shared with the CUDA implementation.
+set_signal_cuda_ptr = set_signal_hip_ptr
+
+CudaHostLibrary = HipHostLibrary
+
+# Source-compatible aliases for existing NVSHMEM tutorial Python code.
+get_nvshmem_home = get_dushmem_home
+try_get_nvshmem_home = try_get_dushmem_home
+resolve_nvshmem_host_library = resolve_dushmem_host_library
+enable_nvshmem_device_bc = enable_dushmem_device_bc
+is_nvshmem_device_bc_enabled = is_dushmem_device_bc_enabled
+resolve_nvshmem_device_bitcode = resolve_dushmem_device_bitcode
+get_nvshmem_extern_libs = get_dushmem_extern_libs
+init_nvshmem_by_torch_pg = init_dushmem_by_torch_pg
+finalize_nvshmem_by_torch_pg = finalize_dushmem_by_torch_pg

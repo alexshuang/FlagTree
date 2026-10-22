@@ -85,9 +85,14 @@ def _extract_target_triple(text: str) -> str | None:
 
 def _dushmem_include_flags() -> list[str]:
     # Import lazily: utils.py also imports HIPBackend and host-side dependencies.
-    from triton.experimental.tle.raw.hcu.utils import get_dushmem_home
+    # from triton.experimental.tle.raw.hcu.utils import get_dushmem_home
+    # return [
+    #     f"-I{get_dushmem_home() / 'include'}",
+    # ]
     return [
-        f"-I{get_dushmem_home() / 'include'}",
+        "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
+        "-mcode-object-version=4",
+        "-I/opt/dtk/dushmem/include",
     ]
 
 
@@ -318,7 +323,7 @@ def _clang_flags(library: str | None = None) -> list[str]:
         "-include",
         "hip/hip_runtime.h",
         f"-I{HIPBackend.path_to_rocm()}/cuda/cuda/include",
-        # *_library_include_flags(library),
+        *_library_include_flags(library),
     ]
 
 

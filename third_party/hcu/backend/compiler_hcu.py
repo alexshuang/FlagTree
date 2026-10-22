@@ -922,7 +922,7 @@ class HIPBackend(BaseBackend):
                         options,
                     )
                     if options.schedule_hint == "attention":
-                        clang_args.append("-sink-insts-to-avoid-spills")
+                        clang_args.append("sink-insts-to-avoid-spills")
                     # One machine-code module for the kernel and its transitive
                     # library callees: no kernel.o + separately compiled lib.o.
                     object_file = directory / "kernel-linked.o"

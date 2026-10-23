@@ -92,23 +92,17 @@ def _extract_target_triple(text: str) -> str | None:
 
 
 def _dushmem_include_flags() -> list[str]:
-    # Import lazily: utils.py also imports HIPBackend and host-side dependencies.
-    # from triton.experimental.tle.raw.hcu.utils import get_dushmem_home
-    # return [
-    #     f"-I{get_dushmem_home() / 'include'}",
-    # ]
     return [
         "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
         "-mcode-object-version=4",
         "-I/opt/dtk/dushmem/include",
-        "-I/opt/dtk/include/dushmem",
     ]
 
 
 def _library_include_flags(library: str | None) -> list[str]:
     if library in (None, ""):
         return []
-    if library == "dushmem":
+    elif library == "dushmem":
         return _dushmem_include_flags()
     raise RuntimeError("TLE-Raw HCU supports only library=None or library='dushmem'; "
                        f"got {library!r}")
@@ -187,7 +181,6 @@ def _infer_device_function_name(source: str, source_file: str) -> str:
         "-fsyntax-only",
         "-Wno-everything",
         "-ferror-limit=0",
-        # *_library_include_flags(library),
         *_AST_SCAN_MACROS,
         "-Xclang",
         "-ast-dump=json",
@@ -354,10 +347,10 @@ class HCUJITFunction(RawJITFunction):
 
     def __init__(self, fn: Any, file: Path, *args, **kwargs) -> None:
         super().__init__(fn, **kwargs)
-        if self.library not in ("", "dushmem"):
-            raise RuntimeError(f"tle_raw library={self.library!r} is not supported on hcu")
-        if self.library == "dushmem":
-            _register_dushmem_hook()
+        # if self.library not in ("", "dushmem"):
+        #     raise RuntimeError(f"tle_raw library={self.library!r} is not supported on hcu")
+        # if self.library == "dushmem":
+        #     _register_dushmem_hook()
 
         self.code: Final[str] = file.read_text()
         self.source_file: Final[str] = str(file)
@@ -369,11 +362,6 @@ class HCUJITFunction(RawJITFunction):
         self.arg_dialect: Final[str] = "llvm"
 
         self.opt_level: Final[str] = kwargs.get("opt_level") or "-O3"
-
-        # if self.library:
-        #     raise RuntimeError(f"TLE-Raw HCU does not support "
-        #                        f"library={self.library!r}")
-        # _library_include_flags(self.library)
 
         if not self.extern_func_name:
             self.extern_func_name = (
@@ -465,18 +453,18 @@ class HCUJITFunction(RawJITFunction):
         return str(mlir_module)
 
     def mark_kernel_init_hook(self, semantic, generator) -> None:
-        if self.library != "dushmem":
-            return
-        from triton.experimental.tle.raw.hcu.dushmem import DUSHMEM_CUMODULE_INIT_HOOK
-        _register_dushmem_hook()
-        operation = generator.module.get_operation()
-        hooks = operation.get_str_attr("tle.raw.kernel_init_hooks")
-        hook_names = set(hooks.split(",")) if hooks else set()
-        hook_names.add(DUSHMEM_CUMODULE_INIT_HOOK)
-        generator.module.set_attr(
-            "tle.raw.kernel_init_hooks",
-            semantic.builder.get_string_attr(",".join(sorted(hook_names))),
-        )
+        if self.library == "dushmem":
+            from triton.experimental.tle.raw.hcu.dushmem import DUSHMEM_CUMODULE_INIT_HOOK
+            _register_dushmem_hook()
+            operation = generator.module.get_operation()
+            hooks = operation.get_str_attr("tle.raw.kernel_init_hooks")
+            hook_names = set(hooks.split(",")) if hooks else set()
+            print(f"## hook_names: {hook_names}")
+            hook_names.add(DUSHMEM_CUMODULE_INIT_HOOK)
+            generator.module.set_attr(
+                "tle.raw.kernel_init_hooks",
+                semantic.builder.get_string_attr(",".join(sorted(hook_names))),
+            )
 
     def register_pending_source(self, *, hint: str = "") -> str:
         if not self.extern_func_name:

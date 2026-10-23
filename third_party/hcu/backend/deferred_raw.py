@@ -73,39 +73,6 @@ def consume_link_sources() -> list[dict[str, str]]:
     return sources
 
 
-def _clang_command(clang: str, arch: str, src: str, output: str, *, bitcode: bool, dushmem: bool = False) -> list[str]:
-    command = [
-        clang,
-        "-x",
-        "hip",
-        "--offload-device-only",
-        "-emit-llvm",
-        "-O3",
-        f"--offload-arch={arch}",
-        "-nogpulib",
-        "-fno-exceptions",
-        "-fno-rtti",
-        "-I/opt/dtk/include",
-        "-I/opt/dtk/hip/include",
-    ]
-
-    if dushmem:
-        # libdushmem_device.a is code object v4, and its headers call the
-        # warp-sync builtins that HIP hides unless this macro is set.
-        command.extend([
-            "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
-            "-mcode-object-version=4",
-            "-I/opt/dtk/dushmem/include",
-        ])
-    if bitcode:
-        # -fgpu-rdc keeps the device function externally visible so llvm-link
-        # can resolve the declaration Triton emits.
-        command.extend(["-fgpu-rdc", "-c", src, "-o", output])
-    else:
-        command.extend(["-S", src, "-o", output])
-    return command
-
-
 def link_raw_bitcode(llir: str, sources: list[dict[str, str]], arch: str) -> str:
     """Compile each HIP source with DTK clang and llvm-link it into ``llir``."""
 

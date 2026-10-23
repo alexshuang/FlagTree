@@ -31,7 +31,8 @@ def _compile_shared(source: Path, library: Path) -> None:
     library.parent.mkdir(parents=True, exist_ok=True)
     lock_path = library.with_suffix(library.suffix + ".lock")
     command = [
-        "/opt/dtk/bin/hipcc",
+        # "/opt/dtk/bin/hipcc",
+        "/opt/dtk/bin/aicc",
         "-shared",
         "-fPIC",
         "-fgpu-rdc",

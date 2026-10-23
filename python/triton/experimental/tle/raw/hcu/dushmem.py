@@ -13,6 +13,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from triton.backends.hcu.compiler import HIPBackend
 
 DUSHMEM_CUMODULE_INIT_HOOK = "dushmem_cumodule_init"
 
@@ -127,3 +128,34 @@ def initialize_dushmem_cumodule(kernel) -> None:
     result = _get_cumodule_init()(ctypes.c_void_p(kernel.module))
     if result != 0:
         raise RuntimeError(f"dushmemx_cumodule_init failed: {result}")
+
+
+def link_dushmem_lib(src, arch: str) -> str:
+    clang = HIPBackend.path_to_rocm_clang()
+    llvm_link = str(Path(clang).with_name("llvm-link"))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        kernel = Path(tmpdir) / "kernel.ll"
+        kernel.write_text(str(src))
+        dushmem = resolve_dushmem_device_bitcode(arch)
+
+        # # hipcc links these device libraries before codegen. The copies under
+        # # Triton's backend lib do not define __ockl_get_local_id.
+        # device_lib = Path("/opt/dtk/amdgcn/bitcode")
+        # isa = "".join(ch for ch in (sources[0].get("arch") or arch) if ch.isdigit())
+        # for name in (
+        #         "ockl.bc",
+        #         "ocml.bc",
+        #         "oclc_wavefrontsize64_on.bc",
+        #         f"oclc_isa_version_{isa}.bc",
+        #         "oclc_abi_version_500.bc",
+        # ):
+        #     path = device_lib / name
+        #     if path.is_file():
+        #         bitcodes.append(str(path))
+        linked = Path(tmpdir) / "linked.ll"
+        command = [llvm_link, str(kernel), str(dushmem), "-S", "-o", str(linked)]
+        print(f"## link_raw_bitcode: {command}")
+        build = subprocess.run(command, capture_output=True, text=True)
+        if build.returncode != 0:
+            raise RuntimeError(f"llvm-link failed:\ncommand: {' '.join(command)}\n{build.stderr}")
+        return linked.read_text()

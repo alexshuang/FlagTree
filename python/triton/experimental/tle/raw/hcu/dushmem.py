@@ -13,7 +13,6 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from triton.backends.hcu.compiler import HIPBackend
 
 DUSHMEM_CUMODULE_INIT_HOOK = "dushmem_cumodule_init"
 
@@ -26,7 +25,7 @@ def dushmem_lib_dir() -> Path:
         lib = Path(env) / "lib"
         if lib.is_dir():
             return lib
-    return Path("/opt/dtk/dushmem/lib")
+    return Path("/opt/dtk/lib/dushmem")
 
 
 def resolve_dushmem_host_library() -> Path:
@@ -52,8 +51,7 @@ def resolve_dushmem_device_bitcode(arch: str) -> Path:
     cached = Path(tempfile.gettempdir()) / f"dushmem-device-slim2-{arch}-{stamp}.bc"
     if cached.is_file():
         return cached
-    # clang_dir = Path(os.environ.get("TRITON_HIP_CLANG_PATH", "/opt/dtk/aillvm/bin/clang-18")).parent
-    clang_dir = HIPBackend.path_to_rocm_llvm() / "bin"
+    clang_dir = Path(os.environ.get("TRITON_HIP_CLANG_PATH", "/opt/dtk/aillvm/bin/clang-18")).parent
     bundler = clang_dir / "clang-offload-bundler"
     llvm_ar = clang_dir / "llvm-ar"
     llvm_link = clang_dir / "llvm-link"
@@ -99,10 +97,12 @@ def resolve_dushmem_device_bitcode(arch: str) -> Path:
         # declarations. Pull the one this gfx936 build references.
         slim_cmd.append("--glob=.str.3")
         slim_cmd.append(transfer_bc)
+        print(f"## slim_cmd: {slim_cmd}")
         extracted_funcs = subprocess.run(slim_cmd, capture_output=True, text=True)
         if extracted_funcs.returncode != 0:
             raise RuntimeError(f"llvm-extract failed:\n{extracted_funcs.stderr}")
         linked = Path(tmp) / "dushmem-device.bc"
+        print(f"## linked: {linked}")
         link = subprocess.run([str(llvm_link), init_bc, str(slim), "-o", str(linked)], capture_output=True, text=True)
         if link.returncode != 0:
             raise RuntimeError(f"llvm-link failed for DUSHMEM device bitcode:\n{link.stderr}")

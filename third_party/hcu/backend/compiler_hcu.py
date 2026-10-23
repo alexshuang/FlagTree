@@ -12,28 +12,7 @@ import subprocess
 import functools
 import warnings
 import os
-import shlex
 from pathlib import Path
-
-# Only rocSHMEM kernels defer native code generation. The cached "amdgcn"
-# artifact then contains this tagged, unlinked LLIR payload, not GPU assembly.
-# This avoids unsupported cross-module ISA calls and survives partial cache hits.
-_ROCSHMEM_LLIR_MARKER = "; TLE-RAW HCU deferred rocSHMEM LLIR v1\n"
-
-
-def _is_rocshmem_device_lib(name, path):
-    stem = Path(path).name.lower()
-    return (str(name).lower() in {"rocshmem", "rocshmem_device", "librocshmem_device"} or (stem.startswith(
-        ("librocshmem", "rocshmem_device")) and stem.endswith(".bc")))
-
-
-def _uses_rocshmem(src, metadata, options):
-    if metadata.get("use_rocshmem"):
-        return True
-    if any(_is_rocshmem_device_lib(name, path) for name, path in (options.extern_libs or ())):
-        return True
-    # Includes mangled C++ names, C API names, and ROCSHMEM_CTX_DEFAULT.
-    return re.search(r'@(?:"[^"\n]*rocshmem[^"\n]*"|[-\w.$]*rocshmem[-\w.$]*)', str(src), re.IGNORECASE) is not None
 
 
 def get_min_dot_size(target: GPUTarget):
@@ -147,9 +126,6 @@ class HIPOptions:
             extern_libs[lib] = str(default_libdir / f'{lib}.bc')
         # rocshmem_device_lib = str(default_libdir / 'librocshmem_device.bc')
 
-        # rocSHMEM is intentionally not auto-added here. A decorator in one
-        # kernel must not enable device-library linking in unrelated kernels.
-        # Explicit extern_libs entries are retained, but deferred to make_hsaco.
         object.__setattr__(self, 'extern_libs', tuple(extern_libs.items()))
         # object.__setattr__(self, 'rocshmem_device_lib', rocshmem_device_lib)
 
@@ -306,13 +282,21 @@ class HIPBackend(BaseBackend):
     def path_to_rocm_lld():
         llvm_path = HIPBackend.path_to_rocm_llvm()
         # Check env path for ld.lld
-        lld_env_path = os.getenv("TRITON_HIP_LLD_PATH",
-                                 # By default, use clang-18
-                                 str(llvm_path / "bin/ld.lld"))
+        lld_env_path = knobs.hcu.lld_path
         if lld_env_path is not None:
             lld = Path(lld_env_path)
             if lld.is_file():
                 return lld
+        # Check backend for ld.lld (used for pytorch wheels)
+        lld = Path(__file__).parent / "llvm/bin/ld.lld"
+        if lld.is_file():
+            return lld
+        lld = llvm_path / "bin/ld.lld"
+        if lld.is_file():
+            return lld
+        lld = Path("/usr/bin/ld.lld")
+        if lld.is_file():
+            return lld
         raise Exception(f"ROCm linker not found under {llvm_path}/bin/ld.lld. "
                         "Set 'TRITON_HIP_LLD_PATH' to its path.")
 
@@ -402,8 +386,10 @@ class HIPBackend(BaseBackend):
 
     @staticmethod
     def make_ttir(mod, metadata, options):
+        # flagtree tle raw: dushmemx_cumodule_init runs after the hsaco is loaded.
         kernel_init_hooks = mod.get_operation().get_str_attr("tle.raw.kernel_init_hooks")
         metadata["kernel_init_hooks"] = kernel_init_hooks.split(",") if kernel_init_hooks else []
+        print(f"## kernel_init_hooks: {metadata['kernel_init_hooks']}")
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
         passes.common.add_inliner(pm)
@@ -572,11 +558,16 @@ class HIPBackend(BaseBackend):
         passes.convert.add_index_to_llvmir(pm)
 
         hcu.passes.ttgpuir.add_allocate_shared_memory(pm)
-        from .deferred_raw import (deferred_raw_materialize, finish_deferred_raw_materialize)
-        raw_link_libraries = deferred_raw_materialize(mod, pm)
-        declared_libraries = mod.get_operation().get_str_attr("tle.raw.link_libraries") or ""
-        metadata["use_rocshmem"] = ("rocshmem" in raw_link_libraries or "rocshmem" in declared_libraries.split(","))
+        from .deferred_raw import (
+            consume_link_sources,
+            deferred_raw_materialize,
+            finish_deferred_raw_materialize,
+        )
+        deferred_raw_materialize(mod, pm)
         tle.raw_passes.add_tle_dsl_region_inline(pm)
+        link_sources = consume_link_sources()
+        if link_sources:
+            metadata["hcu_raw_link_sources"] = link_sources
         kernel_name = mod.get_entry_func_name()
         # instrumentation point here so we can override IRs above (e.g., ttir and ttgir)
         if HIPBackend.instrumentation:
@@ -626,10 +617,9 @@ class HIPBackend(BaseBackend):
         hcu.passes.ttgpuir.add_builtin_func_to_llvmir(pm, __HIP_FTZ)
         # TritonDistributed Extension: libdevice -> llvm
         distributed.passes.ttgpuir.hcu.add_lib_device_to_llvmir(pm, __HIP_FTZ)
-        try:
-            pm.run(mod, 'make_llir')
-        finally:
-            finish_deferred_raw_materialize()
+        pm.run(mod, 'make_llir')
+
+        finish_deferred_raw_materialize()
 
         if knobs.compilation.dump_ir_extract_di_local_variables:
             # comments below on why separate it
@@ -706,7 +696,6 @@ class HIPBackend(BaseBackend):
         # to user SGPRs so that the kernel does not need to s_load its arguments
         # from memory.
         hcu.set_all_fn_arg_inreg(fns[0])
-        metadata["use_rocshmem"] = _uses_rocshmem(str(llvm_mod), metadata, options)
         metadata['use_nvshmem'] = False
         for k in llvm_mod.get_functions():
             if "nvshmem" in k.name and k.is_declaration():
@@ -722,10 +711,7 @@ class HIPBackend(BaseBackend):
             ]
             llvm.link_extern_libs(llvm_mod, paths)
         elif options.extern_libs:
-            paths = [
-                path for (name, path) in options.extern_libs
-                if not _is_rocshmem_device_lib(name, path) and hcu.need_extern_lib(llvm_mod, name)
-            ]
+            paths = [path for (name, path) in options.extern_libs if hcu.need_extern_lib(llvm_mod, name)]
             if len(paths) > 0:
                 llvm.link_extern_libs(llvm_mod, paths)
 
@@ -733,17 +719,6 @@ class HIPBackend(BaseBackend):
         if metadata['use_nvshmem']:
             default_libdir = Path(__file__).parent / 'lib'
             llvm.link_extern_libs(llvm_mod, [str(default_libdir / "libnvshmem_device.bc")])
-
-        if options.extern_libs:
-            paths = [path for (name, path) in options.extern_libs if not _is_rocshmem_device_lib(name, path)]
-            if paths:
-                llvm.link_extern_libs(llvm_mod, paths)
-
-        # Initial O3 can erase unused __oclc_* constants before rocSHMEM
-        # introduces its references. Keep their exact HCU-emitted definitions.
-        late_control_constants = []
-        if metadata["use_rocshmem"]:
-            late_control_constants = re.findall(r'^@__oclc_[^\n]+', str(llvm_mod), re.MULTILINE)
 
         llvm.optimize_module(llvm_mod, llvm.OPTIMIZE_O3, options.arch, '', [], options.enable_fp_fusion)
 
@@ -768,26 +743,37 @@ class HIPBackend(BaseBackend):
         # Disable inlining of print related functions,
         # because inlining of these function could slow down compilation significantly
         hcu.disable_print_inline(llvm_mod)
-        llir = str(llvm_mod)
-        for definition in late_control_constants:
-            name = definition.split("=", 1)[0].strip()
-            if not re.search(rf'^{re.escape(name)}\s*=', llir, re.MULTILINE):
-                llir += "\n" + definition + "\n"
-        return llir
+        return str(llvm_mod)
 
+    ## TODO: [HCU] integrate with rocshmem
     @staticmethod
     def make_amdgcn(src, metadata, options):
         # Find kernel names (there should only be one)
         # We get the name at the last possible step to accommodate `triton.compile`
         # on user-provided LLVM
+        link_sources = metadata.get("hcu_raw_link_sources")
+        # hipcc's device compiler (dcc) is what vectorizes HCU HIP. aillvm
+        # clang drops those target features and leaves a scalar loop.
+        # dcc 17 rejects Triton's buffer-resource intrinsic
+        # (llvm.amdgcn.make.buffer.rsrc.p8.p1). call_smem kernels load and
+        # store through that intrinsic, so those modules stay on aillvm.
+        kernel_ir = str(src)
+        kernel_uses_buffer_rsrc = "llvm.amdgcn.make.buffer.rsrc" in kernel_ir
+        dcc = os.environ.get("TRITON_HIP_DCC_PATH", "/opt/dtk/dcc/bin/dcc")
+        print(link_sources)
+        print(os.path.isfile(dcc))
+        print(kernel_uses_buffer_rsrc)
+        use_dcc = bool(link_sources) and os.path.isfile(dcc) and not kernel_uses_buffer_rsrc
+        print(f"## use_dcc: {use_dcc}")
+        metadata["hcu_raw_dcc"] = use_dcc
+        if link_sources:
+            from .deferred_raw import link_raw_bitcode
+            print(f"## kernel_ir: {kernel_ir}")
+            print(f"## link_sources: {link_sources}")
+            src = link_raw_bitcode(kernel_ir, link_sources, options.arch)
         names = re.findall(r"define amdgpu_kernel void @([a-zA-Z_][a-zA-Z0-9_]*)", src)
         assert len(names) == 1
         metadata["name"] = names[0]
-        metadata["use_rocshmem"] = _uses_rocshmem(src, metadata, options)
-        if metadata["use_rocshmem"]:
-            # No library resolution/link/codegen here. Carry the original kernel
-            # LLIR through the on-disk stage cache until make_hsaco can link it.
-            return _ROCSHMEM_LLIR_MARKER + str(src)
         # llvm -> hsaco
         flags = []
         # The sink-insts-to-avoid-spills flag asks LLVM backend to sink instructions
@@ -795,11 +781,13 @@ class HIPBackend(BaseBackend):
         # can also lead to regression in some cases. But from current observation,
         # the regression is not significant. It would be better to have some heuristics.
         if options.schedule_hint == 'attention':
-            flags.append('-sink-insts-to-avoid-spills')
+            flags.append('sink-insts-to-avoid-spills')
         # features = '-real-true16' if 'gfx11' in options.arch else ''
         # amdgcn = llvm.translate_to_asm(src, hcu.TARGET_TRIPLE, options.arch, features, flags, options.enable_fp_fusion,
         #                                False)
-        llir_file = asm_file = None
+        llir_file = ""
+        asm_file = ""
+        amdgcn = ""
         try:
             with tempfile.NamedTemporaryFile(mode='w', suffix=".ll", delete=False) as f:
                 llir_file = f.name
@@ -807,9 +795,24 @@ class HIPBackend(BaseBackend):
 
             asm_file = tempfile.mktemp(suffix=".amdgcn")
 
-            clang_path = HIPBackend.path_to_rocm_clang()
-            clang_args = HIPBackend._get_clang_args(metadata, options) + flags
-            # clang_args = [arg for arg in HIPBackend._get_clang_args(metadata, options) if arg] + flags
+            if use_dcc:
+                # Same device compiler hipcc uses, so the linked HIP bitcode
+                # keeps the codegen a pure HIP build would get. DUSHMEM's
+                # device bitcode is built +sramecc. Textual asm from that IR
+                # fails to assemble (v_writelane_b32 / m0), so the hsaco step
+                # LTO-links this file the way hipcc links libdushmem_device.
+                mcpu = options.arch
+                if "+sramecc" in str(src) and "sramecc" not in mcpu:
+                    mcpu = f"{mcpu}:sramecc+"
+                    metadata["hcu_raw_lto"] = True
+                clang_path = dcc
+                clang_args = ["-target", hcu.TARGET_TRIPLE, f"-mcpu={mcpu}", "-O3"]
+            else:
+                clang_path = HIPBackend.path_to_rocm_clang()
+                clang_args = HIPBackend._get_clang_args(metadata, options) + flags
+
+            # clang_path = HIPBackend.path_to_rocm_clang()
+            # clang_args = HIPBackend._get_clang_args(metadata, options) + flags
 
             # Compile to ASM
             asm_command = [clang_path] + clang_args + [llir_file, "-S", "-o", asm_file]
@@ -828,147 +831,127 @@ class HIPBackend(BaseBackend):
             print(f"File operation failed: {str(e)}")
             raise HSACOError(f"File operation failed: {str(e)}") from e
         finally:
-            # Clean up temporary files
-            for file in [llir_file, asm_file]:
-                if file is not None and os.path.exists(file):
-                    os.remove(file)
+            # # Clean up temporary files
+            # for file in [llir_file, asm_file]:
+            #     if os.path.exists(file):
+            #         os.remove(file)
+            print(f"## hcu_raw_lto: {metadata.get('hcu_raw_lto')}, llir_file: {llir_file}")
+            if metadata.get("hcu_raw_lto") and llir_file:
+                metadata["hcu_raw_linked_ll"] = llir_file
+            elif llir_file and os.path.exists(llir_file):
+                os.remove(llir_file)
+            if asm_file and os.path.exists(asm_file):
+                os.remove(asm_file)
         if knobs.hcu.dump_amdgcn:
             print("// -----// HCUGCN Dump //----- //")
             print(amdgcn)
         return amdgcn
 
     @staticmethod
-    def _run_hsaco_command(command):
-        command = [str(arg) for arg in command]
-        try:
-            return subprocess.run(command, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as exc:
-            raise HSACOError("HCU HSACO command failed\n"
-                             f"command: {shlex.join(command)}\n"
-                             f"stdout:\n{exc.stdout or ''}\nstderr:\n{exc.stderr or ''}") from exc
-        except OSError as exc:
-            raise HSACOError(f"Cannot execute {shlex.join(command)}: {exc}") from exc
-
-    @staticmethod
-    def _link_rocshmem_device_bitcode(llvm_ir, directory, metadata, options):
-        """Link ONLY inside make_hsaco; never import the result into MLIR."""
-        explicit = [Path(path) for name, path in (options.extern_libs or ()) if _is_rocshmem_device_lib(name, path)]
-        if explicit:
-            bitcodes = list(dict.fromkeys(explicit))
-        else:
-            from triton.experimental.tle.raw.hcu.utils import resolve_rocshmem_device_bitcode
-            bitcode = resolve_rocshmem_device_bitcode(arch=options.arch)
-            if bitcode is None:
-                raise HSACOError(f"rocSHMEM device bitcode not found for {options.arch!r}; "
-                                 "check ROCSHMEM_HOME or extern_libs['librocshmem_device']")
-            bitcodes = [Path(bitcode)]
-        for path in bitcodes:
-            if not path.is_file():
-                raise HSACOError(f"rocSHMEM device bitcode not found: {path}")
-
-        llvm_link = HIPBackend.path_to_rocm_llvm() / "bin" / "llvm-link"
-        if not llvm_link.is_file():
-            raise HSACOError(f"Matching HCU llvm-link not found: {llvm_link}")
-        source = directory / "kernel.ll"
-        linked = directory / "rocshmem-linked.bc"
-        source.write_text(llvm_ir)
-        HIPBackend._run_hsaco_command([
-            llvm_link,
-            "--only-needed",
-            source,
-            *bitcodes,
-            "-o",
-            linked,
-        ])
-
-        # The rocSHMEM implementation can introduce new OCML/OCKL/HIP calls
-        # that did not exist when make_llir linked the kernel's device libs.
-        support_libs = [
-            Path(path) for name, path in (options.extern_libs or ()) if not _is_rocshmem_device_lib(name, path)
-        ]
-        if knobs.compilation.enable_asan:
-            support_libs.insert(0, Path(__file__).parent / "lib" / "asanrtl.bc")
-        support_libs = list(dict.fromkeys(support_libs))
-        if support_libs:
-            supported = directory / "device-libs-linked.bc"
-            HIPBackend._run_hsaco_command([
-                llvm_link,
-                "--only-needed",
-                linked,
-                *support_libs,
-                *support_libs,
-                "-o",
-                supported,
-            ])
-            return supported
-        return linked
-
-    @staticmethod
     def make_hsaco(src, metadata, options):
-        """Perform rocSHMEM device linking, code generation, and final ELF link."""
+        # target_features = ''
+        # if knobs.compilation.enable_asan:
+        #     target_features = '+xnack'
+        # hsaco = hcu.assemble_amdgcn(src, options.arch, target_features)
         try:
-            with tempfile.TemporaryDirectory(prefix="triton-hcu-hsaco-") as temp_dir:
-                directory = Path(temp_dir)
-                hsaco_file = directory / "kernel.hsaco"
+            with tempfile.NamedTemporaryFile(mode='w', suffix=".s", delete=False) as f:
+                asm_file = f.name
+                f.write(str(src))
+
+            hsaco_file = tempfile.mktemp(suffix=".hsaco")
+
+            # clang_path = HIPBackend.path_to_rocm_clang()
+            # clang_args = HIPBackend._get_clang_args(metadata, options)
+
+            # # Compile to HSACO
+            # hsaco_command = [clang_path] + clang_args + [asm_file, "-x", "assembler", "-o", hsaco_file]
+            # subprocess.run(hsaco_command, check=True, capture_output=True, text=True)
+
+            linked_ll = metadata.pop("hcu_raw_linked_ll", None)
+            print("## make_hsaco: ")
+            print(f"## linked_ll: {linked_ll}")
+            if metadata.pop("hcu_raw_lto", None) and linked_ll:
+                print(f"## hcu_raw_lto enter")
+                # hipcc device-links DUSHMEM with lld LTO. The text assembler
+                # rejects some of that codegen.
+                hsaco_file = tempfile.mktemp(suffix=".hsaco")
+                lld_candidates = [
+                    *sorted(Path("/opt").glob("dtk*/llvm/bin/lld")),
+                    Path("/opt/dtk/llvm/bin/lld"),
+                ]
+                lld = next((path for path in lld_candidates if path.is_file()), None)
+                if lld is None:
+                    raise HSACOError("llvm lld for DUSHMEM LTO was not found")
+                bitcode = hsaco_file + ".bc"
+                llvm_as = Path("/opt/dtk/aillvm/bin/llvm-as")
+                subprocess.run([str(llvm_as), linked_ll, "-o", bitcode], check=True, capture_output=True, text=True)
+                link_command = [
+                    str(lld),
+                    "-flavor",
+                    "gnu",
+                    "-m",
+                    "elf64_amdgpu",
+                    "--no-undefined",
+                    "-shared",
+                    "-plugin-opt=-amdgpu-internalize-symbols",
+                    f"-plugin-opt=mcpu={options.arch}",
+                    "-plugin-opt=O3",
+                    "--lto-CGO3",
+                    "-plugin-opt=-mattr=+sramecc",
+                    "-plugin-opt=-amdgpu-early-inline-all=true",
+                    "-plugin-opt=-amdgpu-function-calls=false",
+                    "-o",
+                    hsaco_file,
+                    bitcode,
+                ]
+                try:
+                    subprocess.run(link_command, check=True, capture_output=True, text=True)
+                finally:
+                    if os.path.exists(linked_ll):
+                        os.remove(linked_ll)
+            elif metadata.get("hcu_raw_dcc"):
+                print(f"## hcu_raw_dcc enter")
+                # dcc asm is not accepted by aillvm clang, and dcc itself will
+                # try to host-link unless we assemble with -c and then make
+                # the shared code object the loader expects.
+                clang_path = os.environ.get("TRITON_HIP_DCC_PATH", "/opt/dtk/dcc/bin/dcc")
+                obj_file = hsaco_file + ".o"
+                # Linked HIP (dushmem device bc) can emit gfx936:sramecc+ even
+                # when the Triton arch is gfx936. Assemble with that target id.
+                target_id = options.arch
+                match = re.search(r'\.amdgcn_target\s+"amdgcn-amd-amdhsa--([^"]+)"', str(src))
+                if match:
+                    target_id = match.group(1)
+                asm_command = [
+                    clang_path, "-c", "-target", hcu.TARGET_TRIPLE, f"-mcpu={target_id}", "-x", "assembler", asm_file,
+                    "-o", obj_file
+                ]
+                subprocess.run(asm_command, check=True, capture_output=True, text=True)
+                lld = Path(clang_path).with_name("ld.lld")
+                if not lld.is_file():
+                    found = sorted(Path("/opt").glob("dtk*/dcc/bin/ld.lld"))
+                    if not found:
+                        raise HSACOError("dcc ld.lld was not found")
+                    lld = found[-1]
+                link_command = [str(lld), "-shared", "-o", hsaco_file, obj_file]
+                subprocess.run(link_command, check=True, capture_output=True, text=True)
+            else:
                 clang_path = HIPBackend.path_to_rocm_clang()
-                clang_args = [arg for arg in HIPBackend._get_clang_args(metadata, options) if arg]
-                text = str(src)
-                if text.startswith(_ROCSHMEM_LLIR_MARKER):
-                    metadata["use_rocshmem"] = True
-                    linked = HIPBackend._link_rocshmem_device_bitcode(
-                        text[len(_ROCSHMEM_LLIR_MARKER):],
-                        directory,
-                        metadata,
-                        options,
-                    )
-                    if options.schedule_hint == "attention":
-                        clang_args.append("sink-insts-to-avoid-spills")
-                    # One machine-code module for the kernel and its transitive
-                    # library callees: no kernel.o + separately compiled lib.o.
-                    object_file = directory / "kernel-linked.o"
-                    result = HIPBackend._run_hsaco_command([
-                        clang_path,
-                        *clang_args,
-                        "-nogpulib",
-                        "-x",
-                        "ir",
-                        "-c",
-                        linked,
-                        "-o",
-                        object_file,
-                    ])
-                    if options.wdra_enabled:
-                        print(result.stdout + result.stderr, flush=True)
-                    HIPBackend._run_hsaco_command([
-                        HIPBackend.path_to_rocm_lld(),
-                        "-shared",
-                        "--no-undefined",
-                        object_file,
-                        "-o",
-                        hsaco_file,
-                    ])
-                else:
-                    if _uses_rocshmem(text, metadata, options):
-                        raise HSACOError("rocSHMEM HSACO input is native assembly, but late device linking "
-                                         "requires the unlinked LLIR payload. Rebuild from LLIR/TTIR "
-                                         "with this backend; clear stale cache/amdgcn overrides.")
-                    # Preserve the normal non-rocSHMEM assembly -> HSACO path.
-                    assembly = directory / "kernel.s"
-                    assembly.write_text(text)
-                    HIPBackend._run_hsaco_command([
-                        clang_path,
-                        *clang_args,
-                        "-x",
-                        "assembler",
-                        assembly,
-                        "-o",
-                        hsaco_file,
-                    ])
-                return hsaco_file.read_bytes()
-        except HSACOError:
-            raise
-        except OSError as exc:
-            raise HSACOError(f"HCU HSACO file operation failed: {exc}") from exc
+                clang_args = HIPBackend._get_clang_args(metadata, options)
+                hsaco_command = [clang_path] + clang_args + ["-x", "assembler", asm_file, "-o", hsaco_file]
+                subprocess.run(hsaco_command, check=True, capture_output=True, text=True)
+
+            with open(hsaco_file, "rb") as fd_out:
+                ret = fd_out.read()
+
+        except subprocess.CalledProcessError as e:
+            print(f"Compilation failed: {e.stderr}")
+            raise HSACOError(f"Compilation failed: {e.stderr}") from e
+        except IOError as e:
+            print(f"File operation failed: {str(e)}")
+            raise HSACOError(f"File operation failed: {str(e)}") from e
+
+        return ret
 
     def add_stages(self, stages, options, language):
         if language == Language.TRITON:
@@ -985,4 +968,4 @@ class HIPBackend(BaseBackend):
     @functools.lru_cache()
     def hash(self):
         version = subprocess.check_output([HIPBackend.path_to_rocm_clang(), "--version"], encoding='utf-8')
-        return f'{version}-{self.target}-rocshmem-hsaco-link-v1'
+        return f'{version}-{self.target}'

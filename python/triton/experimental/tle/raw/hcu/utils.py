@@ -9,16 +9,12 @@ from __future__ import annotations
 import ctypes
 import datetime
 import fcntl
-import re
 import os
-import functools
 import subprocess
 from pathlib import Path
 
 import torch
 from triton.experimental.tle.raw.nvshmem.utils import tensor_from_pointer
-from triton.backends.hcu.compiler import HIPBackend
-from triton.runtime.driver import driver
 
 __all__ = [
     "compile_host_library",
@@ -31,47 +27,21 @@ __all__ = [
 _UID_BYTES = 1024
 
 
-def _offload_arch() -> str:
-    target = driver.active.get_current_target()
-    if target.backend != "hip":
-        raise RuntimeError("TLE-Raw HCU requires a HIP-compatible target, "
-                           f"got backend={target.backend!r}")
-
-    arch = str(target.arch).split(":", 1)[0]
-    if re.fullmatch(r"gfx[0-9a-f]+", arch, re.IGNORECASE) is None:
-        raise RuntimeError(f"invalid HCU architecture {arch!r}; "
-                           "expected gfx928/gfx936 or another gfx* name")
-
-    return arch
-
-
-@functools.lru_cache()
-def get_aicc() -> tuple[str, str]:
-    rocm_home = HIPBackend.path_to_rocm()
-    aicc = f"{rocm_home}/bin/aicc"
-    if Path(aicc).is_file():
-        output = subprocess.check_output([aicc, "--version"], stderr=subprocess.STDOUT, text=True)
-        match = re.search(r"(?:HIP version|clang version)\s*:?\s*([0-9]+(?:\.[0-9]+)+)", output)
-        return aicc, match.group(1) if match else "unknown"
-    raise RuntimeError(f"Cannot find {aicc}")
-
-
 def _compile_shared(source: Path, library: Path) -> None:
     library.parent.mkdir(parents=True, exist_ok=True)
     lock_path = library.with_suffix(library.suffix + ".lock")
-    aicc, _ = get_aicc()
     command = [
-        f"{aicc}",
+        "/opt/dtk/bin/hipcc",
         "-shared",
         "-fPIC",
         "-fgpu-rdc",
-        f"--offload-arch={_offload_arch()}",
+        "--offload-arch=gfx936",
         "-O3",
         "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
         "-mcode-object-version=4",
         "-I/opt/dtk/include",
-        "-I/opt/dtk/dushmem/include",
-        "-L/opt/dtk/dushmem/lib",
+        "-I/opt/dtk/include/dushmem",
+        "-L/opt/dtk/lib/dushmem",
         str(source),
         "-o",
         str(library),

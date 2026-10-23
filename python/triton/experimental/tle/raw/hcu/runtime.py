@@ -16,6 +16,14 @@ from triton.backends.hcu.compiler import HIPBackend
 from triton.experimental.tle.raw.runtime import RawJITFunction
 from triton.experimental.tle.raw.source_store import register_source
 
+_LINK_SOURCES: list[dict[str, str]] = []
+
+
+def take_link_sources() -> list[dict[str, str]]:
+    sources = list(_LINK_SOURCES)
+    _LINK_SOURCES.clear()
+    return sources
+
 
 def _offload_arch() -> str:
     target = driver.active.get_current_target()
@@ -93,6 +101,7 @@ def _dushmem_include_flags() -> list[str]:
         "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
         "-mcode-object-version=4",
         "-I/opt/dtk/dushmem/include",
+        "-I/opt/dtk/include/dushmem",
     ]
 
 
@@ -327,11 +336,28 @@ def _clang_flags(library: str | None = None) -> list[str]:
     ]
 
 
+def _register_dushmem_hook() -> None:
+    # Cache hits skip tracing, so the hook has to be registered at import.
+    from triton.experimental.tle.raw.cuda.runtime import register_kernel_init_hook
+    from triton.experimental.tle.raw.hcu.dushmem import (
+        DUSHMEM_CUMODULE_INIT_HOOK,
+        initialize_dushmem_cumodule,
+    )
+    try:
+        register_kernel_init_hook(DUSHMEM_CUMODULE_INIT_HOOK, initialize_dushmem_cumodule)
+    except RuntimeError:
+        pass
+
+
 class HCUJITFunction(RawJITFunction):
     """Compile CUDA/HIP-compatible device source into an eager raw region."""
 
     def __init__(self, fn: Any, file: Path, *args, **kwargs) -> None:
         super().__init__(fn, **kwargs)
+        if self.library not in ("", "dushmem"):
+            raise RuntimeError(f"tle_raw library={self.library!r} is not supported on hcu")
+        if self.library == "dushmem":
+            _register_dushmem_hook()
 
         self.code: Final[str] = file.read_text()
         self.source_file: Final[str] = str(file)
@@ -438,20 +464,19 @@ class HCUJITFunction(RawJITFunction):
 
         return str(mlir_module)
 
-    # def mark_kernel_init_hook(self, semantic, generator) -> None:
-    #     parent_hook = getattr(super(), "mark_kernel_init_hook", None)
-    #     if parent_hook is not None:
-    #         parent_hook(semantic, generator)
-    #     if self.library != "dushmem":
-    #         return
-    #     operation = generator.module.get_operation()
-    #     libraries = operation.get_str_attr("tle.raw.link_libraries")
-    #     names = {name for name in (libraries or "").split(",") if name}
-    #     names.add("dushmem")
-    #     generator.module.set_attr(
-    #         "tle.raw.link_libraries",
-    #         semantic.builder.get_string_attr(",".join(sorted(names))),
-    #     )
+    def mark_kernel_init_hook(self, semantic, generator) -> None:
+        if self.library != "dushmem":
+            return
+        from triton.experimental.tle.raw.hcu.dushmem import DUSHMEM_CUMODULE_INIT_HOOK
+        _register_dushmem_hook()
+        operation = generator.module.get_operation()
+        hooks = operation.get_str_attr("tle.raw.kernel_init_hooks")
+        hook_names = set(hooks.split(",")) if hooks else set()
+        hook_names.add(DUSHMEM_CUMODULE_INIT_HOOK)
+        generator.module.set_attr(
+            "tle.raw.kernel_init_hooks",
+            semantic.builder.get_string_attr(",".join(sorted(hook_names))),
+        )
 
     def register_pending_source(self, *, hint: str = "") -> str:
         if not self.extern_func_name:
@@ -491,6 +516,10 @@ class HCUJITFunction(RawJITFunction):
 
 def compile_deferred_pending_source(entry: dict, *, context) -> str:
     source_text = entry["source"]
+    func_name = entry.get("extern_func_name") or ""
+    arch = entry.get("arch") or _offload_arch()
+    source_file = entry.get("source_file", "<deferred hcu source>")
+    library = entry.get("library") or ""
 
     class _HCUSourceFile:
 
@@ -500,11 +529,21 @@ def compile_deferred_pending_source(entry: dict, *, context) -> str:
     hcu_fn = HCUJITFunction(
         fn=None,
         file=_HCUSourceFile(),
-        extern_func_name=entry.get("extern_func_name"),
+        extern_func_name=func_name,
         deferred=True,
         opt_level=entry.get("opt_level"),
-        library=entry.get("library"),
+        library=library,
     )
+
+    object.__setattr__(hcu_fn, "arch", arch)
+    object.__setattr__(hcu_fn, "source_file", source_file)
+    _LINK_SOURCES.append({
+        "symbol": func_name,
+        "source": source_text,
+        "arch": arch,
+        "file": source_file,
+        "library": library,
+    })
 
     llvm_ir = hcu_fn.make_llvm(context)
     # The materializer must find the lowered (possibly C++-mangled) symbol.

@@ -539,7 +539,7 @@ def compile_deferred_pending_source(entry: dict, *, context) -> str:
     object.__setattr__(hcu_fn, "source_file", source_file)
     _LINK_SOURCES.append({
         "symbol": func_name,
-        "source": source_text,
+        # "source": source_text,
         "arch": arch,
         "file": source_file,
         "library": library,

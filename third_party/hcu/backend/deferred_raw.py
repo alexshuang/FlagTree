@@ -116,22 +116,22 @@ def link_raw_bitcode(llir: str, sources: list[dict[str, str]], arch: str) -> str
         kernel.write_text(llir)
         bitcodes: list[str] = []
         for index, source in enumerate(sources):
-            hip = Path(tmpdir) / f"raw_{index}.hip"
-            bc = Path(tmpdir) / f"raw_{index}.bc"
-            hip.write_text(source["source"])
-            command = _clang_command(
-                clang,
-                source.get("arch") or arch,
-                str(hip),
-                str(bc),
-                bitcode=True,
-                dushmem=source.get("library") == "dushmem",
-            )
-            build = subprocess.run(command, capture_output=True, text=True)
-            if build.returncode != 0:
-                raise RuntimeError(f"HCU clang failed to emit bitcode for {source.get('file')}:\n"
-                                   f"{build.stderr}")
-            bitcodes.append(str(bc))
+            # hip = Path(tmpdir) / f"raw_{index}.hip"
+            # bc = Path(tmpdir) / f"raw_{index}.bc"
+            # hip.write_text(source["source"])
+            # command = _clang_command(
+            #     clang,
+            #     source.get("arch") or arch,
+            #     str(hip),
+            #     str(bc),
+            #     bitcode=True,
+            #     dushmem=source.get("library") == "dushmem",
+            # )
+            # build = subprocess.run(command, capture_output=True, text=True)
+            # if build.returncode != 0:
+            #     raise RuntimeError(f"HCU clang failed to emit bitcode for {source.get('file')}:\n"
+            #                        f"{build.stderr}")
+            # bitcodes.append(str(bc))
             if source.get("library") == "dushmem":
                 from triton.experimental.tle.raw.hcu.dushmem import resolve_dushmem_device_bitcode
                 bitcodes.append(str(resolve_dushmem_device_bitcode(source.get("arch") or arch)))
